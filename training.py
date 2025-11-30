@@ -20,13 +20,15 @@ def find_latest_checkpoint():
 # Training function
 def train_tft_model(
     data_dir: str = "./data/resampled",
-    max_epochs: int = 30,
-    min_encoder_length: int = 1, # Limited for cold-start
-    max_encoder_length: int = 20,
+    max_epochs: int = 60,
+    min_encoder_length: int = 1, # For cold-start scenarios
+    max_encoder_length: int = 400, # Increased for longer context windows
     max_prediction_length: int = 200,
     batch_size: int = 64,
-    hidden_size: int = 64,
-    learning_rate: float = 0.0005
+    hidden_size: int = 45,
+    hidden_continuous_size: int = 37,
+    attention_head_size: int = 3,
+    learning_rate: float = 1e-05
 ):
     """
     Train the TFT model.
@@ -34,8 +36,8 @@ def train_tft_model(
     Args:
         data_dir: Directory containing the training data
         max_epochs: Maximum number of training epochs
-        gpus: Number of GPUs to use
-        max_encoder_length: Length of encoder sequence
+        min_encoder_length: Minimum encoder length (1 for cold-start support)
+        max_encoder_length: Maximum encoder length (longer context window)
         max_prediction_length: Length of prediction horizon
         batch_size: Batch size for training
         hidden_size: Hidden size of the model
@@ -45,12 +47,15 @@ def train_tft_model(
         Trained model and data module
     """
     # Create data module
+    # Note: use_sliding_windows=False for training (only used for inference)
+    # randomize_length=True provides data augmentation during training
     data_module = TFTDataModule(
         data_dir=data_dir,
         min_encoder_length=min_encoder_length,
         max_encoder_length=max_encoder_length,
         max_prediction_length=max_prediction_length,
-        batch_size=batch_size
+        batch_size=batch_size,
+        use_sliding_windows=False  # Disabled for training
     )
     
     # Setup data
@@ -61,7 +66,9 @@ def train_tft_model(
         data_module.training,
         hidden_size=hidden_size,
         learning_rate=learning_rate,
-        output_size=[1] * 5, # Multi-target output 
+        hidden_continuous_size=hidden_continuous_size,
+        attention_head_size=attention_head_size,
+        output_size=[1] * 4, # Multi-target output: duration_diff, heartRate, temperature, cadence
     )
 
     # Callbacks
@@ -76,7 +83,7 @@ def train_tft_model(
 
     early_stopping_callback = EarlyStopping(
         monitor="val_loss",
-        patience=30,
+        patience=20,
         verbose=True,
         mode="min",
         min_delta=0.001,  # Minimum change to qualify as improvement
@@ -102,7 +109,7 @@ def train_tft_model(
         strategy='auto',  # Let Lightning choose the best strategy
         logger=logger,
         devices=2,
-        gradient_clip_val=0.1,
+        gradient_clip_val=0.04,
         # limit_train_batches=50,  # Limit for faster training during development
         enable_checkpointing=True,
         precision="32-true",  # Use full precision for better accuracy
@@ -134,14 +141,15 @@ if __name__ == "__main__":
     # Train the model
     model, data_module, trainer = train_tft_model(
         data_dir="./data/resampled",
-        max_epochs=30,  # Likely early stop will trigger
-        min_encoder_length=1, # Limited for cold-start
-        max_encoder_length=20,  # Larger may overfit
+        max_epochs=60,  # Likely early stop will trigger
+        min_encoder_length=1,  # For cold-start scenarios
+        max_encoder_length=400,  # Longer context window for better predictions
         max_prediction_length=200,
-        # batch_size=32,
         batch_size=64,
-        hidden_size=64,
-        learning_rate=0.0005
+        hidden_size=45,
+        hidden_continuous_size=37,
+        attention_head_size=3,
+        learning_rate=1e-05
     )
     
     print("Training completed!")

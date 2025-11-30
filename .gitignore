@@ -215,3 +215,9 @@ test_*
 backups
 data-explore.ipynb
 .github
+
+optuna_study*
+optuna_checkpoints
+example*
+
+.lr_find*

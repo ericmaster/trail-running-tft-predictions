@@ -271,6 +271,30 @@ class DataProcessor:
         # Copy altitude data
         df["altitude_raw"] = df["altitude"].copy()
 
+        # Check for sudden spikes at the beginning (GPS initialization errors)
+        # If first sample has a very different altitude from subsequent samples, it's likely an error
+        first_altitude = df["altitude"].iloc[0]
+        # Use median of next 5-10 samples as reference (more robust than mean)
+        reference_altitude = df["altitude"].iloc[5:15].median()
+        
+        if abs(first_altitude - reference_altitude) > 100:  # More than 100m difference
+            print(f"  Detected GPS initialization error in first sample: {first_altitude:.2f}m vs reference {reference_altitude:.2f}m")
+            print(f"  Replacing first samples with interpolated values...")
+            
+            # Find where altitude stabilizes (within 50m of reference)
+            stable_idx = None
+            for i in range(1, min(20, len(df))):
+                if abs(df["altitude"].iloc[i] - reference_altitude) < 50:
+                    stable_idx = i
+                    break
+            
+            if stable_idx is not None:
+                # Interpolate first samples from stable value backwards
+                stable_value = df["altitude"].iloc[stable_idx]
+                for i in range(stable_idx):
+                    # Linear interpolation from stable value
+                    df.loc[df.index[i], "altitude"] = stable_value
+
         # Check for sudden spikes and correct them
         altitude_diff = df["altitude"].diff().fillna(0)
         spike_threshold = 5
@@ -421,6 +445,35 @@ class DataProcessor:
                 if na_count > 0:
                     na_percentage = (na_count / total_count) * 100
                     print(f"  duration: {na_count}/{total_count} NA values ({na_percentage:.2f}%)")
+
+            # Trim initial samples where distance is 0.0 (GPS initialization period)
+            # Keep only the last sample with distance=0.0 before actual movement starts
+            if "distance" in df.columns:
+                # Find all rows where distance is 0.0 or NaN at the beginning
+                zero_distance_mask = (df["distance"] == 0.0) | (df["distance"].isna())
+                
+                if zero_distance_mask.any():
+                    # Find the first index where distance is NOT 0.0/NaN
+                    first_moving_idx = None
+                    for i in range(len(df)):
+                        if not zero_distance_mask.iloc[i]:
+                            first_moving_idx = i
+                            break
+                    
+                    if first_moving_idx is not None and first_moving_idx > 0:
+                        # Keep only the sample immediately before movement starts
+                        trim_start_idx = max(0, first_moving_idx - 1)
+                        samples_trimmed = trim_start_idx
+                        
+                        if samples_trimmed > 0:
+                            if verbose:
+                                print(f"  Trimming {samples_trimmed} initial samples with distance=0.0")
+                            df = df.iloc[trim_start_idx:].reset_index(drop=True)
+                            
+                            # Recalculate duration after trimming
+                            df["duration"] = (
+                                df["timestamp"].diff().dt.total_seconds().cumsum().fillna(method="bfill")
+                            )
 
             # Save the dataframe to a CSV file
             df.to_csv(output_file_name, index=False)

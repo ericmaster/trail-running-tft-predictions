@@ -23,8 +23,6 @@ class TFTDataModule(pl.LightningDataModule):
         num_workers: int = 4,
         train_split: float = 0.75,
         val_split: float = 0.15, # 0.10 test split
-        min_sequence_length: int = 100,
-        # target: str = "duration",
         time_idx: str = "time_idx",
         group_ids: List[str] = None,
         random_seed: int = 42,
@@ -42,7 +40,6 @@ class TFTDataModule(pl.LightningDataModule):
             num_workers: Number of workers for dataloaders
             train_split: Proportion of data for training
             val_split: Proportion of data for validation
-            min_sequence_length: Minimum length required for a session
             time_idx: Time index column name
             group_ids: List of group identifier columns
             random_seed: Random seed for deterministic shuffling
@@ -57,8 +54,6 @@ class TFTDataModule(pl.LightningDataModule):
         self.num_workers = num_workers
         self.train_split = train_split
         self.val_split = val_split
-        self.min_sequence_length = min_sequence_length
-        # self.target = target
         self.time_idx = time_idx
         self.group_ids = group_ids or ["session_id"]
         self.random_seed = random_seed
@@ -252,7 +247,7 @@ class TFTDataModule(pl.LightningDataModule):
                     start_idx = pred_end - self.max_encoder_length
                     
                 else:
-                    # Subsequent chunks: use last 20 predicted steps as encoder
+                    # Subsequent chunks: use last 200 predicted steps as encoder
                     encoder_len = self.max_encoder_length
                     
                     # Calculate chunk boundaries
@@ -398,7 +393,7 @@ class TFTDataModule(pl.LightningDataModule):
             self.val_data = val_data_raw
             self.test_data = test_data_raw
         
-        print(f"Session-based splits for cold-start evaluation:")
+        print(f"Session-based splits:")
         print(f"Train sessions: {len(train_session_ids)}, Val sessions: {len(val_session_ids)}, Test sessions: {len(test_session_ids)}")
         print(f"Train data points: {len(self.train_data)}, Val: {len(self.val_data)}, Test: {len(self.test_data)}")
         
@@ -419,8 +414,15 @@ class TFTDataModule(pl.LightningDataModule):
         # Define target and unknown future variables (these need to be predicted/estimated)
         # We are performing multi-target forecasting: predict all these variables
         # Their past values are used as inputs to help predict their own and others' futures
-        target = time_varying_unknown_reals = self.target_names
-        time_varying_unknown_reals.append("speed")
+        target = self.target_names
+        time_varying_unknown_reals = self.target_names + [
+            "speed",
+            "avg_heart_rate_so_far",  # Fatigue proxy feature
+            "duration"  # Accumulated duration for context
+        ]
+        print(f"Time-varying known reals: {time_varying_known_reals}")
+        print(f"Time-varying unknown reals: {time_varying_unknown_reals}")
+        print(f"Targets: {target}")
         
         # Create training dataset
         # session_id_encoded is pre-calculated by DataResampler for cold-start evaluation
@@ -449,7 +451,9 @@ class TFTDataModule(pl.LightningDataModule):
             target_normalizer=target_normalizer,
             add_relative_time_idx=True,
             add_target_scales=True,
-            randomize_length=not self.use_sliding_windows,  # Disable if using windows (already chunked)
+            # randomize_length provides data augmentation by varying sequence lengths
+            # Only enabled for training (not for sliding windows inference)
+            randomize_length=not self.use_sliding_windows,  
             allow_missing_timesteps=False, # We probably want to avoid this
             categorical_encoders={group_id_col: NaNLabelEncoder(add_nan=True)},
             # Additional regularization parameters
@@ -503,3 +507,73 @@ class TFTDataModule(pl.LightningDataModule):
             num_workers=self.num_workers
         )
     
+# =============================================================================
+# CREATE SYNTHETIC ENCODER (Cold-Start)
+# =============================================================================
+# Use weighted average of first samples from training sessions
+def calculate_weighted_first_sample(df, fixed_heart_rate=None, fixed_speed=None, 
+                                     fixed_cadence=None, fixed_temperature=None):
+    """
+    Calculate weighted average of first samples for cold-start.
+    
+    Args:
+        df: DataFrame with training data
+        fixed_heart_rate: Optional fixed heart rate value to override weighted average
+        fixed_speed: Optional fixed speed value (m/s) to override weighted average
+        fixed_cadence: Optional fixed cadence value to override weighted average
+        fixed_temperature: Optional fixed temperature value to override weighted average
+        
+    Returns:
+        pd.Series with synthetic encoder values
+    """
+    # Get all training sessions chronologically
+    session_ids = sorted(df['session_id_encoded'].unique())
+    
+    # Extract first sample from each session
+    first_samples = []
+    session_dates = []
+    
+    for sid in session_ids:
+        session_df = df[df['session_id_encoded'] == sid]
+        first_sample = session_df.iloc[0].copy()
+        first_samples.append(first_sample)
+        
+        # Parse date from session_id
+        session_id_str = first_sample['session_id']
+        try:
+            parts = session_id_str.split('-')
+            if len(parts) >= 5:
+                date_str = f"{parts[2]}-{parts[3]}-{parts[4]}"
+                session_dates.append(pd.to_datetime(date_str))
+            else:
+                session_dates.append(pd.to_datetime(sid, unit='s', origin='unix'))
+        except:
+            session_dates.append(pd.to_datetime(sid, unit='s', origin='unix'))
+    
+    # Calculate weights based on days from first session
+    first_date = min(session_dates)
+    weights = [(date - first_date).days + 1 for date in session_dates]
+    weights = np.array(weights, dtype=float)
+    weights = weights / weights.sum()
+    
+    # Calculate weighted average
+    first_samples_df = pd.DataFrame(first_samples)
+    weighted_avg = pd.Series(0.0, index=first_samples_df.columns)
+    
+    for col in first_samples_df.columns:
+        if first_samples_df[col].dtype in [np.float64, np.float32, np.int64, np.int32]:
+            weighted_avg[col] = np.average(first_samples_df[col].astype(float), weights=weights)
+        else:
+            weighted_avg[col] = first_samples_df[col].iloc[-1]
+    
+    # Override with fixed values if provided
+    if fixed_heart_rate is not None:
+        weighted_avg['heartRate'] = fixed_heart_rate
+    if fixed_speed is not None:
+        weighted_avg['speed'] = fixed_speed
+    if fixed_cadence is not None:
+        weighted_avg['cadence'] = fixed_cadence
+    if fixed_temperature is not None:
+        weighted_avg['temperature'] = fixed_temperature
+    
+    return weighted_avg

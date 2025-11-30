@@ -86,21 +86,21 @@ class TrailRunningTFT(TemporalFusionTransformer):
         """
         # Set our preferred defaults only if not already provided
         if 'learning_rate' not in kwargs:
-            kwargs['learning_rate'] = 0.001
+            kwargs['learning_rate'] = 4e-05
         if 'hidden_size' not in kwargs:
-            kwargs['hidden_size'] = 64
+            kwargs['hidden_size'] = 45
         if 'attention_head_size' not in kwargs:
-            kwargs['attention_head_size'] = 4
+            kwargs['attention_head_size'] = 3
         if 'dropout' not in kwargs:
             kwargs['dropout'] = 0.25
         if 'hidden_continuous_size' not in kwargs:
-            kwargs['hidden_continuous_size'] = 32
+            kwargs['hidden_continuous_size'] = 37
         if 'output_size' not in kwargs:
             kwargs['output_size'] = len(dataset.target)  # Multi-target output
         if 'lstm_layers' not in kwargs:
             kwargs['lstm_layers'] = 1
         if 'weight_decay' not in kwargs:
-            kwargs['weight_decay'] = 0.005  # L2 regularization
+            kwargs['weight_decay'] = 5e-04  # L2 regularization
         if 'loss' not in kwargs:
             # Use a simpler approach - just use MultiLoss with SMAPE for each target
             # This avoids potential compatibility issues with pytorch-forecasting
