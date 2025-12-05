@@ -3,7 +3,62 @@ import torch
 import torch.nn as nn
 from pytorch_forecasting import TemporalFusionTransformer
 from pytorch_forecasting.metrics import SMAPE, MAE, RMSE, MultiLoss
+from pytorch_forecasting.metrics.base_metrics import MultiHorizonMetric
 from pytorch_forecasting.models.temporal_fusion_transformer.sub_modules import InterpretableMultiHeadAttention
+
+
+class AsymmetricSMAPE(MultiHorizonMetric):
+    """
+    Asymmetric SMAPE loss that penalizes under-predictions more than over-predictions.
+    
+    This is compatible with pytorch-forecasting's MultiLoss and TFT architecture.
+    
+    With alpha > 0.5, the model is penalized more for under-predictions,
+    encouraging predictions to be higher than actuals (conservative estimates).
+    
+    For trail running: alpha=0.7 means under-predictions are penalized ~2.3x more
+    than over-predictions, which helps address the observed cold-start bias.
+    """
+    
+    def __init__(self, alpha: float = 0.7, **kwargs):
+        """
+        Initialize asymmetric SMAPE loss.
+        
+        Args:
+            alpha: Asymmetry factor (0.5 = symmetric SMAPE, >0.5 = penalize under-prediction more)
+        """
+        super().__init__(**kwargs)
+        self.alpha = alpha
+    
+    def loss(self, y_pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+        """
+        Calculate asymmetric SMAPE loss.
+        
+        Args:
+            y_pred: Predicted values (may have extra dimension from model output)
+            target: Target values
+        
+        Returns:
+            Asymmetric SMAPE loss per sample
+        """
+        # Convert to point prediction (same as SMAPE does)
+        y_pred = self.to_prediction(y_pred)
+        
+        # Standard SMAPE denominator
+        denominator = (torch.abs(y_pred) + torch.abs(target) + 1e-8)
+        
+        # Calculate error
+        error = target - y_pred  # Positive when under-predicting
+        
+        # Asymmetric weighting
+        # When error > 0 (under-prediction): weight = alpha
+        # When error < 0 (over-prediction): weight = (1 - alpha)
+        weights = torch.where(error > 0, self.alpha, 1 - self.alpha)
+        
+        # Asymmetric SMAPE: weight * |error| / denominator * 2
+        loss = weights * torch.abs(error) / denominator * 2
+        
+        return loss
 
 
 class WeightedMultiTargetSMAPE(nn.Module):
@@ -80,9 +135,15 @@ class TrailRunningTFT(TemporalFusionTransformer):
     #                     attention_module.mask_bias = mask_bias_value
 
     @classmethod
-    def from_dataset(cls, dataset, **kwargs):
+    def from_dataset(cls, dataset, use_quantile_loss: bool = False, quantile_alpha: float = 0.7, **kwargs):
         """
         Instantiate TrailRunningTFT from a TimeSeriesDataSet with optimized defaults for trail running.
+        
+        Args:
+            dataset: TimeSeriesDataSet to create model from
+            use_quantile_loss: If True, use asymmetric quantile loss instead of SMAPE
+            quantile_alpha: Alpha for quantile loss (0.7 = penalize under-predictions more)
+            **kwargs: Additional model arguments
         """
         # Set our preferred defaults only if not already provided
         if 'learning_rate' not in kwargs:
@@ -102,12 +163,7 @@ class TrailRunningTFT(TemporalFusionTransformer):
         if 'weight_decay' not in kwargs:
             kwargs['weight_decay'] = 5e-04  # L2 regularization
         if 'loss' not in kwargs:
-            # Use a simpler approach - just use MultiLoss with SMAPE for each target
-            # This avoids potential compatibility issues with pytorch-forecasting
             target_names = dataset.target
-            
-            # Create individual SMAPE losses for each target
-            from pytorch_forecasting.metrics import MultiLoss, SMAPE
             
             # Define weights for multi-target forecasting
             target_weights = []
@@ -117,14 +173,28 @@ class TrailRunningTFT(TemporalFusionTransformer):
                 else:
                     target_weights.append(0.05)  # 5% weight for each other variable
             
-            kwargs['loss'] = MultiLoss(
-                metrics=[SMAPE() for _ in target_names],
-                weights=target_weights
-            )
+            if use_quantile_loss:
+                # Use asymmetric SMAPE loss to bias toward over-prediction
+                # This helps address the cold-start under-prediction bias
+                print(f"\n=== Using Asymmetric SMAPE Loss (alpha={quantile_alpha}) ===")
+                print(f"Under-prediction penalty: {quantile_alpha / (1 - quantile_alpha):.2f}x more than over-prediction")
+                
+                kwargs['loss'] = MultiLoss(
+                    metrics=[AsymmetricSMAPE(alpha=quantile_alpha) for _ in target_names],
+                    weights=target_weights
+                )
+            else:
+                # Use standard SMAPE loss
+                print(f"\n=== Using Standard SMAPE Loss ===")
+                kwargs['loss'] = MultiLoss(
+                    metrics=[SMAPE() for _ in target_names],
+                    weights=target_weights
+                )
             
-            print(f"Initialized MultiLoss with target weights:")
+            print(f"Target weights:")
             for name, weight in zip(target_names, target_weights):
                 print(f"  {name}: {weight:.1%}")
+                
         if 'logging_metrics' not in kwargs:
             kwargs['logging_metrics'] = [SMAPE(), MAE(), RMSE()]
         if 'reduce_on_plateau_patience' not in kwargs:

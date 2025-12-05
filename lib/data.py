@@ -26,7 +26,8 @@ class TFTDataModule(pl.LightningDataModule):
         time_idx: str = "time_idx",
         group_ids: List[str] = None,
         random_seed: int = 42,
-        use_sliding_windows: bool = False
+        use_sliding_windows: bool = False,
+        cold_start_weight: float = 0.0,  # Weight for emphasizing cold-start samples (0.0-1.0)
     ):
         """
         Initialize the TFT DataModule.
@@ -44,6 +45,10 @@ class TFTDataModule(pl.LightningDataModule):
             group_ids: List of group identifier columns
             random_seed: Random seed for deterministic shuffling
             use_sliding_windows: If True, creates overlapping chunks from sessions
+            cold_start_weight: Weight for emphasizing cold-start samples (0.0-1.0).
+                              Higher values mean more training samples with minimal encoder.
+                              0.0 = standard randomize_length behavior
+                              1.0 = all samples use min_encoder_length (cold-start only)
         """
         super().__init__()
         self.data_dir = data_dir
@@ -58,6 +63,7 @@ class TFTDataModule(pl.LightningDataModule):
         self.group_ids = group_ids or ["session_id"]
         self.random_seed = random_seed
         self.use_sliding_windows = use_sliding_windows
+        self.cold_start_weight = cold_start_weight
         # For prediction, we will forecast multiple targets
         # Instead of duration we are predicting duration_diff (change in duration)
         # This allows the model to learn more complex patterns
@@ -484,12 +490,91 @@ class TFTDataModule(pl.LightningDataModule):
         print(f"Test samples: {len(self.test)}")
     
     def train_dataloader(self):
-        """Return training dataloader."""
-        return self.training.to_dataloader(
-            train=True, 
-            batch_size=self.batch_size, 
-            num_workers=self.num_workers
-        )
+        """
+        Return training dataloader with optional cold-start emphasis.
+        
+        When cold_start_weight > 0, uses weighted sampling to emphasize samples 
+        that can use shorter encoder lengths (closer to cold-start conditions).
+        """
+        if self.cold_start_weight > 0 and not self.use_sliding_windows:
+            # Use weighted random sampling to emphasize cold-start scenarios
+            # Samples earlier in each session (lower time_idx) can have shorter encoders
+            from torch.utils.data import WeightedRandomSampler
+            
+            # Get sample metadata from dataset
+            sample_weights = self._calculate_cold_start_weights()
+            
+            sampler = WeightedRandomSampler(
+                weights=sample_weights,
+                num_samples=len(self.training),
+                replacement=True
+            )
+            
+            return self.training.to_dataloader(
+                train=True, 
+                batch_size=self.batch_size, 
+                num_workers=self.num_workers,
+                sampler=sampler,  # Use weighted sampler
+                shuffle=False,  # Sampler handles randomization
+            )
+        else:
+            return self.training.to_dataloader(
+                train=True, 
+                batch_size=self.batch_size, 
+                num_workers=self.num_workers
+            )
+    
+    def _calculate_cold_start_weights(self):
+        """
+        Calculate sampling weights to emphasize cold-start samples.
+        
+        Samples that start earlier in the sequence (lower time_idx in index) get higher weights
+        because they represent scenarios closer to cold-start conditions.
+        
+        Weight formula:
+            base_weight = 1.0
+            cold_start_bonus = cold_start_weight * (1 - relative_position)
+            final_weight = base_weight + cold_start_bonus
+        
+        Returns:
+            Tensor of weights for each sample in the training dataset
+        """
+        import torch
+        
+        # Get index data from dataset
+        index_df = self.training.index.copy()
+        
+        # Use 'time' column which represents the starting time_idx of each sequence
+        if 'time' not in index_df.columns:
+            print("Warning: Could not find 'time' column for cold-start weights. Using uniform weights.")
+            return torch.ones(len(self.training), dtype=torch.float32)
+        
+        # Calculate relative position based on 'time' (starting time_idx)
+        # Lower time = earlier in session = closer to cold-start
+        min_time = index_df['time'].min()
+        max_time = index_df['time'].max()
+        
+        if max_time > min_time:
+            # Relative position: 0 = earliest, 1 = latest
+            relative_position = (index_df['time'] - min_time) / (max_time - min_time)
+        else:
+            relative_position = pd.Series(0.0, index=index_df.index)
+        
+        # Early samples (cold-start) get higher weights
+        # cold_start_bonus ranges from cold_start_weight (at start) to 0 (at end)
+        base_weight = 1.0
+        cold_start_bonus = self.cold_start_weight * (1.0 - relative_position)
+        weights = base_weight + cold_start_bonus
+        
+        # Normalize weights
+        weights = weights / weights.mean()
+        
+        print(f"\nCold-start sampling weights calculated:")
+        print(f"  Weight range: {weights.min():.3f} - {weights.max():.3f}")
+        print(f"  Cold-start emphasis: {self.cold_start_weight:.1%}")
+        print(f"  Samples at time_idx=0 weighted {(1 + self.cold_start_weight):.2f}x average")
+        
+        return torch.tensor(weights.values, dtype=torch.float32)
     
     def val_dataloader(self):
         """Return validation dataloader."""

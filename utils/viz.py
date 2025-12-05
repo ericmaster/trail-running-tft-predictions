@@ -416,3 +416,259 @@ def plot_accumulated_duration_error(all_predictions, all_actuals, session_data, 
         'error_min': error_min,
         'distance_km': distance_km
     }
+
+
+def plot_v1_v2_comparison(
+    pred_arr_v1, actual_arr_v1, pred_arr_v2, actual_arr_v2,
+    session_id=None, save_path='./assets/v1_v2_comparison.png'
+):
+    """
+    Plot V1 vs V2 model comparison for cold-start inference.
+    
+    Args:
+        pred_arr_v1: V1 predictions array (duration_diff)
+        actual_arr_v1: V1 actuals array (duration_diff)
+        pred_arr_v2: V2 predictions array (duration_diff)
+        actual_arr_v2: V2 actuals array (duration_diff)
+        session_id: Optional session ID for title
+        save_path: Path to save the figure
+        
+    Returns:
+        dict: Summary statistics for both models
+    """
+    # Calculate errors
+    errors_v1 = pred_arr_v1 - actual_arr_v1
+    errors_v2 = pred_arr_v2 - actual_arr_v2
+    
+    # Calculate statistics
+    v1_mae = np.mean(np.abs(errors_v1))
+    v1_bias = np.mean(errors_v1)
+    v1_rmse = np.sqrt(np.mean(errors_v1**2))
+    
+    v2_mae = np.mean(np.abs(errors_v2))
+    v2_bias = np.mean(errors_v2)
+    v2_rmse = np.sqrt(np.mean(errors_v2**2))
+    
+    # Print comparison table
+    print(f"\n{'Metric':<20} {'V1 (SMAPE)':<15} {'V2 (Asym.SMAPE)':<15} {'Change':<15}")
+    print("-"*65)
+    print(f"{'MAE (s)':<20} {v1_mae:<15.3f} {v2_mae:<15.3f} {v2_mae-v1_mae:+.3f}")
+    print(f"{'Bias (s)':<20} {v1_bias:<15.3f} {v2_bias:<15.3f} {v2_bias-v1_bias:+.3f}")
+    print(f"{'RMSE (s)':<20} {v1_rmse:<15.3f} {v2_rmse:<15.3f} {v2_rmse-v1_rmse:+.3f}")
+    
+    # Accumulated duration comparison
+    pred_accumulated_v1 = np.cumsum(pred_arr_v1)
+    actual_accumulated_v1 = np.cumsum(actual_arr_v1)
+    pred_accumulated_v2 = np.cumsum(pred_arr_v2)
+    actual_accumulated_v2 = np.cumsum(actual_arr_v2)
+    
+    # Ensure same length for comparison
+    min_len = min(len(pred_arr_v1), len(pred_arr_v2))
+    
+    print(f"\n{'Accumulated Duration (at step ' + str(min_len) + '):':<40}")
+    print(f"  Actual: {actual_accumulated_v1[min_len-1]/60:.1f} min")
+    print(f"  V1 Predicted: {pred_accumulated_v1[min_len-1]/60:.1f} min (error: {(pred_accumulated_v1[min_len-1]-actual_accumulated_v1[min_len-1])/60:+.1f} min)")
+    print(f"  V2 Predicted: {pred_accumulated_v2[min_len-1]/60:.1f} min (error: {(pred_accumulated_v2[min_len-1]-actual_accumulated_v2[min_len-1])/60:+.1f} min)")
+    
+    # Final accumulated error percentage
+    v1_final_error_pct = (pred_accumulated_v1[min_len-1] - actual_accumulated_v1[min_len-1]) / actual_accumulated_v1[min_len-1] * 100
+    v2_final_error_pct = (pred_accumulated_v2[min_len-1] - actual_accumulated_v2[min_len-1]) / actual_accumulated_v2[min_len-1] * 100
+    
+    print(f"\n{'Final Accumulated Error %:':<40}")
+    print(f"  V1: {v1_final_error_pct:+.1f}%")
+    print(f"  V2: {v2_final_error_pct:+.1f}%")
+    
+    # Create 2x2 visualization
+    fig, axes = plt.subplots(2, 2, figsize=(14, 10))
+    
+    # 1. Accumulated Duration Comparison
+    ax1 = axes[0, 0]
+    distance_km_arr = [i * 5 / 1000 for i in range(min_len)]
+    ax1.plot(distance_km_arr, actual_accumulated_v1[:min_len]/60, 'k-', linewidth=2, label='Actual')
+    ax1.plot(distance_km_arr, pred_accumulated_v1[:min_len]/60, 'b--', linewidth=1.5, alpha=0.8, label=f'V1 (SMAPE) - Error: {v1_final_error_pct:+.1f}%')
+    ax1.plot(distance_km_arr, pred_accumulated_v2[:min_len]/60, 'r--', linewidth=1.5, alpha=0.8, label=f'V2 (Asym.SMAPE) - Error: {v2_final_error_pct:+.1f}%')
+    ax1.set_xlabel('Distance (km)')
+    ax1.set_ylabel('Accumulated Duration (min)')
+    ax1.set_title('Accumulated Duration: V1 vs V2')
+    ax1.legend()
+    ax1.grid(True, alpha=0.3)
+
+    # 2. Error Over Distance
+    ax2 = axes[0, 1]
+    errors_v1_acc = (pred_accumulated_v1[:min_len] - actual_accumulated_v1[:min_len]) / 60
+    errors_v2_acc = (pred_accumulated_v2[:min_len] - actual_accumulated_v2[:min_len]) / 60
+    ax2.plot(distance_km_arr, errors_v1_acc, 'b-', linewidth=1.5, alpha=0.8, label='V1 Error')
+    ax2.plot(distance_km_arr, errors_v2_acc, 'r-', linewidth=1.5, alpha=0.8, label='V2 Error')
+    ax2.axhline(y=0, color='k', linestyle='--', alpha=0.5)
+    ax2.set_xlabel('Distance (km)')
+    ax2.set_ylabel('Accumulated Error (min)')
+    ax2.set_title('Accumulated Error Over Distance')
+    ax2.legend()
+    ax2.grid(True, alpha=0.3)
+
+    # 3. Per-Step Bias Distribution
+    ax3 = axes[1, 0]
+    ax3.hist(errors_v1[:min_len], bins=50, alpha=0.5, label=f'V1 (bias={v1_bias:.3f}s)', color='blue')
+    ax3.hist(errors_v2[:min_len], bins=50, alpha=0.5, label=f'V2 (bias={v2_bias:.3f}s)', color='red')
+    ax3.axvline(x=0, color='k', linestyle='--', alpha=0.5)
+    ax3.axvline(x=v1_bias, color='blue', linestyle='-', alpha=0.8, linewidth=2)
+    ax3.axvline(x=v2_bias, color='red', linestyle='-', alpha=0.8, linewidth=2)
+    ax3.set_xlabel('Per-Step Error (s)')
+    ax3.set_ylabel('Count')
+    ax3.set_title('Per-Step Error Distribution')
+    ax3.legend()
+    ax3.grid(True, alpha=0.3)
+
+    # 4. Rolling Bias (50-step window)
+    ax4 = axes[1, 1]
+    window = 50
+    rolling_bias_v1 = pd.Series(errors_v1[:min_len]).rolling(window=window).mean()
+    rolling_bias_v2 = pd.Series(errors_v2[:min_len]).rolling(window=window).mean()
+    ax4.plot(distance_km_arr, rolling_bias_v1, 'b-', linewidth=1.5, alpha=0.8, label='V1 Rolling Bias')
+    ax4.plot(distance_km_arr, rolling_bias_v2, 'r-', linewidth=1.5, alpha=0.8, label='V2 Rolling Bias')
+    ax4.axhline(y=0, color='k', linestyle='--', alpha=0.5)
+    ax4.set_xlabel('Distance (km)')
+    ax4.set_ylabel(f'Rolling Bias (s, {window}-step window)')
+    ax4.set_title('Rolling Bias Over Distance')
+    ax4.legend()
+    ax4.grid(True, alpha=0.3)
+
+    title = 'Cold-Start Inference: V1 (SMAPE) vs V2 (Asymmetric SMAPE)'
+    if session_id:
+        title += f'\nSession: {session_id}'
+    plt.suptitle(title, fontsize=14, fontweight='bold')
+    plt.tight_layout()
+    
+    if save_path:
+        plt.savefig(save_path, dpi=150, bbox_inches='tight')
+    plt.show()
+    
+    # Print summary
+    print("\n" + "="*80)
+    print("SUMMARY")
+    print("="*80)
+    
+    if abs(v2_bias) < abs(v1_bias):
+        duration_improvement = (abs(v1_bias) - abs(v2_bias)) / abs(v1_bias) * 100
+        print(f"✅ V2 model REDUCED bias by {duration_improvement:.1f}%")
+        print(f"   V1 bias: {v1_bias:+.3f}s → V2 bias: {v2_bias:+.3f}s")
+    else:
+        print(f"❌ V2 model did NOT reduce bias")
+        print(f"   V1 bias: {v1_bias:+.3f}s → V2 bias: {v2_bias:+.3f}s")
+    
+    if abs(v2_final_error_pct) < abs(v1_final_error_pct):
+        print(f"✅ V2 model REDUCED accumulated error")
+        print(f"   V1: {v1_final_error_pct:+.1f}% → V2: {v2_final_error_pct:+.1f}%")
+    else:
+        print(f"❌ V2 model did NOT reduce accumulated error")
+        print(f"   V1: {v1_final_error_pct:+.1f}% → V2: {v2_final_error_pct:+.1f}%")
+    
+    return {
+        'v1_mae': v1_mae, 'v1_bias': v1_bias, 'v1_rmse': v1_rmse,
+        'v2_mae': v2_mae, 'v2_bias': v2_bias, 'v2_rmse': v2_rmse,
+        'v1_final_error_pct': v1_final_error_pct,
+        'v2_final_error_pct': v2_final_error_pct,
+        'min_len': min_len
+    }
+
+
+def plot_prediction_diagnostic(
+    v1_pred, v1_actual, v2_pred, v2_actual,
+    n_show=200, save_path='./assets/prediction_diagnostic.png'
+):
+    """
+    Diagnostic plot to compare V1 vs V2 prediction variance and distribution.
+    
+    Args:
+        v1_pred: V1 predictions array
+        v1_actual: V1 actuals array  
+        v2_pred: V2 predictions array
+        v2_actual: V2 actuals array
+        n_show: Number of steps to show in time series (default: 200)
+        save_path: Path to save the figure
+    """
+    min_len = min(len(v1_pred), len(v2_pred))
+    
+    # Print statistics
+    print("="*80)
+    print("DIRECT COMPARISON OF V1 vs V2 PREDICTION ARRAYS")
+    print("="*80)
+    
+    print(f"\nArray lengths:")
+    print(f"  V1 predictions: {len(v1_pred)}")
+    print(f"  V1 actuals:     {len(v1_actual)}")
+    print(f"  V2 predictions: {len(v2_pred)}")
+    print(f"  V2 actuals:     {len(v2_actual)}")
+    print(f"\nUsing first {min_len} steps for comparison")
+    
+    print(f"\n{'Statistic':<25} {'V1 Pred':<12} {'V2 Pred':<12} {'Actual':<12}")
+    print("-"*60)
+    print(f"{'Mean':<25} {np.mean(v1_pred[:min_len]):<12.4f} {np.mean(v2_pred[:min_len]):<12.4f} {np.mean(v1_actual[:min_len]):<12.4f}")
+    print(f"{'Std':<25} {np.std(v1_pred[:min_len]):<12.4f} {np.std(v2_pred[:min_len]):<12.4f} {np.std(v1_actual[:min_len]):<12.4f}")
+    print(f"{'Min':<25} {np.min(v1_pred[:min_len]):<12.4f} {np.min(v2_pred[:min_len]):<12.4f} {np.min(v1_actual[:min_len]):<12.4f}")
+    print(f"{'Max':<25} {np.max(v1_pred[:min_len]):<12.4f} {np.max(v2_pred[:min_len]):<12.4f} {np.max(v1_actual[:min_len]):<12.4f}")
+    print(f"{'Range':<25} {np.ptp(v1_pred[:min_len]):<12.4f} {np.ptp(v2_pred[:min_len]):<12.4f} {np.ptp(v1_actual[:min_len]):<12.4f}")
+    
+    # Check for constant predictions
+    unique_v1 = len(np.unique(np.round(v1_pred[:min_len], 2)))
+    unique_v2 = len(np.unique(np.round(v2_pred[:min_len], 2)))
+    print(f"\nUnique V1 predictions (rounded to 0.01): {unique_v1}")
+    print(f"Unique V2 predictions (rounded to 0.01): {unique_v2}")
+    
+    # Correlation with actual
+    v1_corr = np.corrcoef(v1_pred[:min_len], v1_actual[:min_len])[0,1]
+    v2_corr = np.corrcoef(v2_pred[:min_len], v2_actual[:min_len])[0,1]
+    print(f"\nCorrelation with actual:")
+    print(f"  V1: {v1_corr:.4f}")
+    print(f"  V2: {v2_corr:.4f}")
+    
+    # Visual check - 3-panel plot
+    fig, axes = plt.subplots(1, 3, figsize=(15, 4))
+    
+    # Panel 1: Time series of first n_show steps
+    ax1 = axes[0]
+    n = min(n_show, min_len)
+    ax1.plot(v1_actual[:n], 'k-', alpha=0.7, label='Actual')
+    ax1.plot(v1_pred[:n], 'b-', alpha=0.7, label='V1')
+    ax1.plot(v2_pred[:n], 'r-', alpha=0.7, label='V2')
+    ax1.set_xlabel('Step')
+    ax1.set_ylabel('duration_diff (s)')
+    ax1.set_title(f'First {n} steps')
+    ax1.legend()
+    ax1.grid(True, alpha=0.3)
+    
+    # Panel 2: Scatter plot - Pred vs Actual
+    ax2 = axes[1]
+    ax2.scatter(v1_actual[:min_len], v1_pred[:min_len], alpha=0.3, s=10, label='V1')
+    ax2.scatter(v2_actual[:min_len], v2_pred[:min_len], alpha=0.3, s=10, label='V2')
+    max_val = max(np.max(v1_actual[:min_len]), np.max(v1_pred[:min_len]), np.max(v2_pred[:min_len]))
+    ax2.plot([0, max_val], [0, max_val], 'k--', alpha=0.5)
+    ax2.set_xlabel('Actual')
+    ax2.set_ylabel('Predicted')
+    ax2.set_title(f'Pred vs Actual (corr V1={v1_corr:.3f}, V2={v2_corr:.3f})')
+    ax2.legend()
+    ax2.grid(True, alpha=0.3)
+    
+    # Panel 3: Distribution comparison
+    ax3 = axes[2]
+    ax3.hist(v1_pred[:min_len], bins=50, alpha=0.5, label=f'V1 (std={np.std(v1_pred[:min_len]):.2f})', density=True)
+    ax3.hist(v2_pred[:min_len], bins=50, alpha=0.5, label=f'V2 (std={np.std(v2_pred[:min_len]):.2f})', density=True)
+    ax3.hist(v1_actual[:min_len], bins=50, alpha=0.3, label=f'Actual (std={np.std(v1_actual[:min_len]):.2f})', density=True, color='green')
+    ax3.set_xlabel('duration_diff (s)')
+    ax3.set_ylabel('Density')
+    ax3.set_title('Prediction Distributions')
+    ax3.legend()
+    ax3.grid(True, alpha=0.3)
+    
+    plt.tight_layout()
+    if save_path:
+        plt.savefig(save_path, dpi=150, bbox_inches='tight')
+    plt.show()
+    
+    return {
+        'unique_v1': unique_v1,
+        'unique_v2': unique_v2,
+        'v1_corr': v1_corr,
+        'v2_corr': v2_corr,
+        'min_len': min_len
+    }
