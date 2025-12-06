@@ -149,8 +149,8 @@ Custom Temporal Fusion Transformer extending pytorch-forecasting's TFT.
 - Configurable hidden sizes, attention heads, and regularization
 
 **Target weights (default):**
-- `duration_diff`: 80%
-- `heartRate`, `temperature`, `cadence`: ~6.7% each
+- `duration_diff`: 85%
+- `heartRate`, `temperature`, `cadence`: 5% each
 
 ### `model_v3.py` - TrailRunningTFTV3
 
