@@ -81,7 +81,7 @@ class FitDataProcessor:
         self,
         input_dir: str = "./data/fitfiles",
         output_dir: str = "./data/fit-processed",
-        resampled_output_dir: str = "./data/resampled",
+        resampled_output_dir: str = "./data/fit-resampled",
         distance_interval: float = 5.0,  # meters
         spectral_window_seconds: float = 5.0,  # Window for spectral analysis
     ):
@@ -944,7 +944,7 @@ def main():
     )
     parser.add_argument(
         "--resampled-dir",
-        default="./data/resampled",
+        default="./data/fit-resampled",
         help="Directory for resampled CSV files",
     )
     parser.add_argument(
