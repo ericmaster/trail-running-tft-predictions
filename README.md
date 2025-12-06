@@ -227,6 +227,92 @@ The Temporal Fusion Transformer (TFT) architecture includes:
 - **Interpretable Multi-Head Attention**: Learn long-range dependencies
 - **Gating Mechanisms**: Control information flow
 
+```mermaid
+flowchart TB
+    subgraph Inputs["Input Variables"]
+        direction LR
+        subgraph Known["Known Future<br/>(Terrain Data)"]
+            altitude["altitude"]
+            elevation_diff["elevation_diff"]
+            elevation_gain["elevation_gain"]
+            elevation_loss["elevation_loss"]
+            distance["distance"]
+        end
+        subgraph Unknown["Unknown Time-Varying<br/>(Physiological)"]
+            duration_diff["duration_diff"]
+            heartRate["heartRate"]
+            temperature["temperature"]
+            cadence["cadence"]
+            speed["speed"]
+        end
+        subgraph Static["Static Metadata"]
+            session_id["session_id"]
+        end
+    end
+
+    subgraph VSN["Variable Selection Networks"]
+        direction LR
+        vsn_static["Static Variable<br/>Selection"]
+        vsn_encoder["Encoder Variable<br/>Selection"]
+        vsn_decoder["Decoder Variable<br/>Selection"]
+    end
+
+    subgraph Processing["Temporal Processing"]
+        direction TB
+        subgraph Encoder["LSTM Encoder"]
+            lstm_enc["Sequence Encoding<br/>(max 400 steps)"]
+        end
+        subgraph Decoder["LSTM Decoder"]
+            lstm_dec["Sequence Decoding<br/>(200 step horizon)"]
+        end
+    end
+
+    subgraph Attention["Interpretable Multi-Head Attention"]
+        mha["Self-Attention<br/>(3 heads)"]
+        temporal["Temporal Pattern<br/>Learning"]
+    end
+
+    subgraph Gating["Gating Mechanisms"]
+        grn["Gated Residual<br/>Networks (GRN)"]
+        glu["Gated Linear<br/>Units (GLU)"]
+    end
+
+    subgraph Outputs["Multi-Target Outputs"]
+        direction LR
+        out_duration["duration_diff"]
+        out_hr["heartRate"]
+        out_temp["temperature"]
+        out_cadence["cadence"]
+    end
+
+    Inputs --> VSN
+    VSN --> Processing
+    Processing --> Attention
+    Attention --> Gating
+    Gating --> Outputs
+
+    style Known fill:#e1f5fe,stroke:#01579b,color:#222222
+    style Unknown fill:#fff3e0,stroke:#e65100,color:#222222
+    style Static fill:#f3e5f5,stroke:#7b1fa2,color:#222222
+    style VSN fill:#e8f5e9,stroke:#2e7d32,color:#222222
+    style Encoder fill:#fce4ec,stroke:#c2185b,color:#222222
+    style Decoder fill:#fce4ec,stroke:#c2185b,color:#222222
+    style Attention fill:#fff8e1,stroke:#f57f17,color:#222222
+    style Gating fill:#e0f2f1,stroke:#00695c,color:#222222
+    style Outputs fill:#ffebee,stroke:#c62828,color:#222222
+```
+
+### Architecture Components
+
+| Component | Description | Configuration |
+|-----------|-------------|---------------|
+| **Variable Selection** | Learns which inputs are relevant for each prediction | Separate networks for static, encoder, decoder |
+| **LSTM Encoder** | Processes historical context | Max 400 time steps (2km history) |
+| **LSTM Decoder** | Generates future predictions | 200 step horizon (1km ahead) |
+| **Multi-Head Attention** | Captures long-range temporal dependencies | 3 attention heads |
+| **Gated Residual Networks** | Controls information flow with skip connections | Hidden size: 45 |
+| **Quantile Outputs** | Produces point predictions with uncertainty | 4 targets simultaneously |
+
 **Input variables:**
 - **Known future** (terrain data, available at prediction time): `altitude`, `elevation_diff`, `elevation_gain`, `elevation_loss`, `distance`
 - **Unknown time-varying** (physiological/environmental): `duration_diff`, `heartRate`, `temperature`, `cadence`, `speed`, `duration`
