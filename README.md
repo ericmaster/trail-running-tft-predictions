@@ -1,6 +1,4 @@
-# Trail Running TFT Predictor
-
-## Application of Temporal Fusion Transformer to Trail Running Predictions
+# Application of Temporal Fusion Transformer to Trail Running Predictions
 
 A deep learning project using **Temporal Fusion Transformers (TFT)** to predict trail running race duration and physiological metrics from sensor data. Built with PyTorch Lightning and the pytorch-forecasting library as part of a Master's degree thesis in Artificial Intelligence (MMIA).
 

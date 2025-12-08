@@ -58,14 +58,14 @@ GARMIN_DATA_DIR = "./data/fit-resampled"
 
 # Training hyperparameters (fine-tuning optimized)
 FINE_TUNE_CONFIG = {
-    "learning_rate": 1e-6,       # 10x lower than V2
+    "learning_rate": 1e-7,       # 10x lower than V2
     "weight_decay": 0.01,        # 2x higher than V2
-    "dropout": 0.30,             # Higher than V2's 0.25
+    "dropout": 0.35,             # Higher than V2's 0.25
     "batch_size": 16,            # Smaller for limited data
     "max_epochs": 100,           # Enough epochs with early stopping
-    "patience": 15,              # Early stopping patience
+    "patience": 10,              # Early stopping patience
     "min_delta": 0.001,          # Minimum improvement for early stopping
-    "gradient_clip_val": 0.5,    # Gradient clipping
+    "gradient_clip_val": 0.02,    # Gradient clipping
     "accumulate_grad_batches": 2,  # Effective batch size = 32
 }
 
@@ -82,7 +82,7 @@ MODEL_CONFIG = {
 # Loss configuration
 LOSS_CONFIG = {
     "use_asymmetric_loss": True,
-    "asymmetric_alpha": 0.6,  # Same as V2
+    "asymmetric_alpha": 0.51,  # Same as V2
 }
 
 

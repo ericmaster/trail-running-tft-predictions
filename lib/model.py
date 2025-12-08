@@ -213,6 +213,9 @@ def evaluate_full_session_sequential(
     max_pred_length: int = 200, 
     encoder_length: int = 1,
     target_names: list = None,
+    additional_time_varying_reals: list = None,
+    additional_known_reals: list = None,
+    time_varying_known_categoricals: list = None,
     verbose: bool = False
 ):
     """
@@ -233,6 +236,12 @@ def evaluate_full_session_sequential(
         max_pred_length: Maximum prediction steps per chunk (default 200)
         encoder_length: Encoder length for subsequent chunks (default 1)
         target_names: List of target variable names (default: standard 4 targets)
+        additional_time_varying_reals: Additional time-varying unknown reals 
+            (deprecated: use additional_known_reals for known features)
+        additional_known_reals: Additional time-varying known reals
+            (e.g., intake features: 'water_intake', 'electrolytes_intake', 'food_intake')
+        time_varying_known_categoricals: Time-varying known categorical features
+            (e.g., 'rpe' for Rate of Perceived Exertion with levels 0-4)
         verbose: If True, print progress for each chunk
         
     Returns:
@@ -290,6 +299,33 @@ def evaluate_full_session_sequential(
     # Time-varying variable lists
     time_varying_known_reals = ["altitude", "elevation_diff", "elevation_gain", "elevation_loss"]
     time_varying_unknown_reals = target_names + ["speed", "avg_heart_rate_so_far", "duration"]
+    known_categoricals = time_varying_known_categoricals or []
+    
+    # Add additional known reals (e.g., intake features for V3)
+    if additional_known_reals:
+        valid_known = [col for col in additional_known_reals if col in session_data.columns]
+        time_varying_known_reals = time_varying_known_reals + valid_known
+        if verbose and valid_known:
+            print(f"Including additional known reals: {valid_known}")
+    
+    # Handle deprecated parameter for backward compatibility
+    if additional_time_varying_reals:
+        # Filter to only include columns that exist in the data
+        valid_additional = [col for col in additional_time_varying_reals if col in session_data.columns]
+        time_varying_unknown_reals = time_varying_unknown_reals + valid_additional
+        if verbose and valid_additional:
+            print(f"Including additional time-varying reals (deprecated): {valid_additional}")
+    
+    # Validate known categoricals
+    if known_categoricals:
+        valid_categoricals = [col for col in known_categoricals if col in session_data.columns]
+        known_categoricals = valid_categoricals
+        if verbose and valid_categoricals:
+            print(f"Including known categoricals: {valid_categoricals}")
+        
+        # Ensure categorical columns are string type
+        for cat_col in known_categoricals:
+            session_data[cat_col] = session_data[cat_col].astype(str)
     
     chunk_idx = 0
     start_idx = 0
@@ -320,6 +356,17 @@ def evaluate_full_session_sequential(
                 encoder_df['session_id_encoded'] = int(session_encoded)
                 encoder_df['session_id'] = session_id
                 
+                # Set known categorical values from first session step
+                for cat_col in known_categoricals:
+                    if cat_col in session_data.columns:
+                        encoder_df[cat_col] = str(session_data.iloc[0][cat_col])
+                
+                # Set known real values from first session step (intake features)
+                if additional_known_reals:
+                    for col in additional_known_reals:
+                        if col in session_data.columns:
+                            encoder_df[col] = session_data.iloc[0][col]
+                
                 pred_df = session_data.iloc[pred_start:pred_end].copy()
                 pred_df['time_idx'] = range(1, pred_length + 1)
                 
@@ -348,6 +395,16 @@ def evaluate_full_session_sequential(
             chunk_data['session_id_encoded'] = chunk_data['session_id_encoded'].astype(int)
             chunk_data['time_idx'] = chunk_data['time_idx'].astype(int)
             
+            # Ensure categorical columns are string type
+            for cat_col in known_categoricals:
+                if cat_col in chunk_data.columns:
+                    chunk_data[cat_col] = chunk_data[cat_col].astype(str)
+            
+            # Build categorical encoders
+            cat_encoders = {"session_id_encoded": NaNLabelEncoder(add_nan=True)}
+            for cat_col in known_categoricals:
+                cat_encoders[cat_col] = NaNLabelEncoder(add_nan=True)
+            
             # Create TimeSeriesDataSet
             chunk_dataset = TimeSeriesDataSet(
                 chunk_data,
@@ -359,13 +416,14 @@ def evaluate_full_session_sequential(
                 min_prediction_length=pred_length,
                 max_prediction_length=pred_length,
                 time_varying_known_reals=time_varying_known_reals,
+                time_varying_known_categoricals=known_categoricals if known_categoricals else [],
                 time_varying_unknown_reals=time_varying_unknown_reals,
                 target_normalizer=MultiNormalizer(
                     [GroupNormalizer(groups=["session_id_encoded"], transformation=None) for _ in target_names]
                 ),
                 add_relative_time_idx=True,
                 add_target_scales=True,
-                categorical_encoders={"session_id_encoded": NaNLabelEncoder(add_nan=True)},
+                categorical_encoders=cat_encoders,
                 add_encoder_length=True,
                 predict_mode=True
             )

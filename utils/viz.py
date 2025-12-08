@@ -1396,3 +1396,238 @@ def print_per_session_comparison(
     print(f"Sessions where V1 is better: {v1_wins}/{len(df_merged)}")
     
     return df_merged
+
+
+def plot_model_comparison(
+    result_a: Dict[str, Any],
+    result_b: Dict[str, Any],
+    session_data_a: pd.DataFrame,
+    session_data_b: pd.DataFrame,
+    model_a_name: str = "Model A",
+    model_b_name: str = "Model B",
+    save_path: Optional[str] = None,
+    show: bool = True
+) -> Tuple[plt.Figure, np.ndarray]:
+    """
+    Plot comprehensive comparison between two model results.
+    
+    This is a generic function that can compare any two model versions
+    (V1 vs V2, V2 vs V3, etc.) on their respective test sessions.
+    
+    Args:
+        result_a: Evaluation result dict for model A 
+            (must have: all_predictions, all_actuals, chunk_errors, final_error_pct, etc.)
+        result_b: Evaluation result dict for model B
+        session_data_a: DataFrame with session data for model A (must have 'altitude', 'elevation_gain')
+        session_data_b: DataFrame with session data for model B
+        model_a_name: Display name for model A (e.g., "V3 (Garmin)")
+        model_b_name: Display name for model B (e.g., "V2 (Polar)")
+        save_path: Optional path to save the figure
+        show: Whether to display the plot (default: True)
+        
+    Returns:
+        Tuple of (figure, axes array)
+    """
+    fig, axes = plt.subplots(2, 3, figsize=(18, 10))
+    
+    # Extract data from results
+    all_predictions_a = result_a['all_predictions']
+    all_actuals_a = result_a['all_actuals']
+    chunk_errors_a = result_a['chunk_errors']
+    
+    all_predictions_b = result_b['all_predictions']
+    all_actuals_b = result_b['all_actuals']
+    chunk_errors_b = result_b['chunk_errors']
+    
+    # Calculate accumulated durations
+    pred_acc_a = np.cumsum(all_predictions_a['duration_diff']) / 60
+    act_acc_a = np.cumsum(all_actuals_a['duration_diff']) / 60
+    distance_a = np.arange(len(pred_acc_a)) * 5 / 1000
+    
+    pred_acc_b = np.cumsum(all_predictions_b['duration_diff']) / 60
+    act_acc_b = np.cumsum(all_actuals_b['duration_diff']) / 60
+    distance_b = np.arange(len(pred_acc_b)) * 5 / 1000
+    
+    # Plot 1: Model A Accumulated Duration
+    ax1 = axes[0, 0]
+    ax1.plot(distance_a, act_acc_a, 'b-', label='Actual', linewidth=2)
+    ax1.plot(distance_a, pred_acc_a, 'r--', label='Predicted', linewidth=2)
+    ax1.set_xlabel('Distance (km)')
+    ax1.set_ylabel('Accumulated Duration (min)')
+    ax1.set_title(f'{model_a_name} - Accumulated Duration')
+    ax1.legend()
+    ax1.grid(True, alpha=0.3)
+    
+    # Plot 2: Model B Accumulated Duration
+    ax2 = axes[0, 1]
+    ax2.plot(distance_b, act_acc_b, 'b-', label='Actual', linewidth=2)
+    ax2.plot(distance_b, pred_acc_b, 'r--', label='Predicted', linewidth=2)
+    ax2.set_xlabel('Distance (km)')
+    ax2.set_ylabel('Accumulated Duration (min)')
+    ax2.set_title(f'{model_b_name} - Accumulated Duration')
+    ax2.legend()
+    ax2.grid(True, alpha=0.3)
+    
+    # Plot 3: Error Progression (absolute difference in minutes)
+    ax3 = axes[0, 2]
+    abs_error_a = pred_acc_a - act_acc_a
+    abs_error_b = pred_acc_b - act_acc_b
+    ax3.plot(distance_a, abs_error_a, 'g-', label=model_a_name, linewidth=2)
+    ax3.plot(distance_b, abs_error_b, 'purple', label=model_b_name, linewidth=2, linestyle='--')
+    ax3.axhline(y=0, color='k', linestyle='-', alpha=0.3)
+    ax3.set_xlabel('Distance (km)')
+    ax3.set_ylabel('Error (minutes)')
+    ax3.set_title('Cumulative Error (Predicted - Actual)')
+    ax3.legend()
+    ax3.grid(True, alpha=0.3)
+    
+    # Plot 4: Model A Elevation Profile
+    ax4 = axes[1, 0]
+    if 'altitude' in session_data_a.columns:
+        elev_a = session_data_a['altitude'].values
+        elev_distance_a = np.arange(len(elev_a)) * 5 / 1000
+        elev_min_a = elev_a.min() - 20
+        ax4.fill_between(elev_distance_a, elev_min_a, elev_a, alpha=0.3, color='green')
+        ax4.plot(elev_distance_a, elev_a, 'g-', linewidth=1.5)
+        ax4.set_ylim(bottom=elev_min_a)
+        total_gain_a = session_data_a['elevation_gain'].sum() if 'elevation_gain' in session_data_a.columns else 0
+        ax4.set_title(f'{model_a_name} Elevation Profile\n(Total gain: {total_gain_a:.0f}m)')
+    ax4.set_xlabel('Distance (km)')
+    ax4.set_ylabel('Altitude (m)')
+    ax4.grid(True, alpha=0.3)
+    
+    # Plot 5: Model B Elevation Profile
+    ax5 = axes[1, 1]
+    if 'altitude' in session_data_b.columns:
+        elev_b = session_data_b['altitude'].values
+        elev_distance_b = np.arange(len(elev_b)) * 5 / 1000
+        elev_min_b = elev_b.min() - 20
+        ax5.fill_between(elev_distance_b, elev_min_b, elev_b, alpha=0.3, color='purple')
+        ax5.plot(elev_distance_b, elev_b, 'purple', linewidth=1.5)
+        ax5.set_ylim(bottom=elev_min_b)
+        total_gain_b = session_data_b['elevation_gain'].sum() if 'elevation_gain' in session_data_b.columns else 0
+        ax5.set_title(f'{model_b_name} Elevation Profile\n(Total gain: {total_gain_b:.0f}m)')
+    ax5.set_xlabel('Distance (km)')
+    ax5.set_ylabel('Altitude (m)')
+    ax5.grid(True, alpha=0.3)
+    
+    # Plot 6: Chunk-by-chunk MAE
+    ax6 = axes[1, 2]
+    chunk_maes_a = [c['mae'] for c in chunk_errors_a]
+    chunk_maes_b = [c['mae'] for c in chunk_errors_b]
+    max_chunks = max(len(chunk_maes_a), len(chunk_maes_b))
+    ax6.bar(np.arange(len(chunk_maes_a)) - 0.2, chunk_maes_a, 0.4, label=model_a_name, color='green')
+    ax6.bar(np.arange(len(chunk_maes_b)) + 0.2, chunk_maes_b, 0.4, label=model_b_name, color='purple')
+    ax6.set_xlabel('Chunk Index')
+    ax6.set_ylabel('MAE (duration_diff)')
+    ax6.set_title('Per-Chunk MAE Comparison')
+    ax6.legend()
+    ax6.grid(True, alpha=0.3)
+    
+    plt.tight_layout()
+    
+    if save_path:
+        plt.savefig(save_path, dpi=150, bbox_inches='tight')
+        print(f"Figure saved to: {save_path}")
+    
+    if show:
+        plt.show()
+    
+    return fig, axes
+
+
+def print_comparison_summary(
+    result_a: Dict[str, Any],
+    result_b: Dict[str, Any],
+    session_data_a: pd.DataFrame,
+    session_data_b: pd.DataFrame,
+    model_a_name: str = "Model A",
+    model_b_name: str = "Model B",
+    sparse_features: Optional[List[str]] = None
+) -> Dict[str, Any]:
+    """
+    Print comprehensive comparison summary between two model results.
+    
+    Args:
+        result_a: Evaluation result dict for model A
+        result_b: Evaluation result dict for model B
+        session_data_a: DataFrame with session data for model A
+        session_data_b: DataFrame with session data for model B
+        model_a_name: Display name for model A
+        model_b_name: Display name for model B
+        sparse_features: Optional list of sparse feature names to analyze
+        
+    Returns:
+        Dict with comparison statistics
+    """
+    print("\n" + "="*80)
+    print(f"COMPARISON SUMMARY: {model_a_name} vs {model_b_name}")
+    print("="*80)
+    
+    # Extract data
+    all_predictions_a = result_a['all_predictions']
+    all_actuals_a = result_a['all_actuals']
+    all_predictions_b = result_b['all_predictions']
+    all_actuals_b = result_b['all_actuals']
+    
+    # Calculate RMSEs
+    errors_a = np.array(all_predictions_a['duration_diff']) - np.array(all_actuals_a['duration_diff'])
+    errors_b = np.array(all_predictions_b['duration_diff']) - np.array(all_actuals_b['duration_diff'])
+    rmse_a = np.sqrt(np.mean(errors_a**2))
+    rmse_b = np.sqrt(np.mean(errors_b**2))
+    
+    # Print duration prediction comparison
+    print("\n--- Duration Prediction Comparison ---")
+    print(f"{'Metric':<25} {model_a_name:<20} {model_b_name:<20}")
+    print("-" * 65)
+    print(f"{'Session Length':<25} {len(session_data_a):>10} steps     {len(session_data_b):>10} steps")
+    print(f"{'Steps Predicted':<25} {result_a['steps_predicted']:>10}          {result_b['steps_predicted']:>10}")
+    print(f"{'Chunks Processed':<25} {result_a['chunks_processed']:>10}          {result_b['chunks_processed']:>10}")
+    print(f"{'Final Error %':<25} {result_a['final_error_pct']:>+10.1f}%         {result_b['final_error_pct']:>+10.1f}%")
+    print(f"{'MAE (duration_diff)':<25} {result_a['mae']:>10.4f}          {result_b['mae']:>10.4f}")
+    print(f"{'Bias':<25} {result_a['bias']:>+10.4f}          {result_b['bias']:>+10.4f}")
+    print(f"{'RMSE (duration_diff)':<25} {rmse_a:>10.4f}          {rmse_b:>10.4f}")
+    print(f"{'Actual Duration (min)':<25} {result_a['actual_duration_min']:>10.1f}          {result_b['actual_duration_min']:>10.1f}")
+    print(f"{'Predicted Duration (min)':<25} {result_a['pred_duration_min']:>10.1f}          {result_b['pred_duration_min']:>10.1f}")
+    
+    # Print elevation comparison
+    print("\n--- Elevation Profile Comparison ---")
+    print(f"{'Metric':<30} {model_a_name:<20} {model_b_name:<20}")
+    print("-" * 70)
+    
+    len_a = len(session_data_a)
+    len_b = len(session_data_b)
+    print(f"{'Distance (km)':<30} {len_a * 5 / 1000:>10.1f}          {len_b * 5 / 1000:>10.1f}")
+    
+    if 'altitude' in session_data_a.columns and 'altitude' in session_data_b.columns:
+        elev_a = session_data_a['altitude'].values
+        elev_b = session_data_b['altitude'].values
+        print(f"{'Min Altitude (m)':<30} {elev_a.min():>10.0f}          {elev_b.min():>10.0f}")
+        print(f"{'Max Altitude (m)':<30} {elev_a.max():>10.0f}          {elev_b.max():>10.0f}")
+        print(f"{'Elevation Range (m)':<30} {elev_a.max() - elev_a.min():>10.0f}          {elev_b.max() - elev_b.min():>10.0f}")
+    
+    if 'elevation_gain' in session_data_a.columns and 'elevation_gain' in session_data_b.columns:
+        print(f"{'Total Elevation Gain (m)':<30} {session_data_a['elevation_gain'].sum():>10.0f}          {session_data_b['elevation_gain'].sum():>10.0f}")
+    
+    if 'elevation_loss' in session_data_a.columns and 'elevation_loss' in session_data_b.columns:
+        print(f"{'Total Elevation Loss (m)':<30} {session_data_a['elevation_loss'].sum():>10.0f}          {session_data_b['elevation_loss'].sum():>10.0f}")
+    
+    # Sparse features analysis (model A only if provided)
+    if sparse_features:
+        print(f"\n--- Sparse Features Analysis ({model_a_name}) ---")
+        print(f"Sparse feature distribution in test session:")
+        for feat in sparse_features:
+            if feat in session_data_a.columns:
+                vals = session_data_a[feat]
+                print(f"  {feat}: min={vals.min():.0f}, max={vals.max():.0f}, "
+                      f"mean={vals.mean():.2f}, non-zero={(vals > 0).sum()}/{len(vals)}")
+    
+    return {
+        'rmse_a': rmse_a,
+        'rmse_b': rmse_b,
+        'mae_a': result_a['mae'],
+        'mae_b': result_b['mae'],
+        'final_error_pct_a': result_a['final_error_pct'],
+        'final_error_pct_b': result_b['final_error_pct'],
+    }
+

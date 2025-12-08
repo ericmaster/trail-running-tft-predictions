@@ -549,22 +549,25 @@ class FitDataProcessor:
         """
         Resample data to fixed distance intervals (5 meters).
         
-        Follows the same approach as data_resampling.py for consistency
-        with the existing TFT pipeline.
+        Uses proper interpolation by combining original data with target grid,
+        then interpolating to fill the target grid values.
         """
         if df.empty or "distance" not in df.columns:
             return df
         
         # Separate sparse event fields (should not be interpolated)
         sparse_cols = [c for c in self.SPARSE_EVENT_FIELDS if c in df.columns]
-        # Continuous cols excludes distance (will be index) and sparse cols
-        continuous_cols = [c for c in df.columns if c not in sparse_cols and c != "distance"]
         
-        # Fill missing values systematically for continuous columns
-        numeric_cols = df.select_dtypes(include=[np.number]).columns
-        for col in numeric_cols:
-            if col != "distance" and col not in sparse_cols:
-                df[col] = df[col].interpolate().ffill().bfill()
+        # Separate numeric columns (can be interpolated) from non-numeric (like timestamp)
+        numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
+        numeric_continuous_cols = [c for c in numeric_cols if c not in sparse_cols and c != "distance"]
+        
+        # Non-numeric columns (like timestamp) - will be forward-filled, not interpolated
+        non_numeric_cols = [c for c in df.columns if c not in numeric_cols and c != "distance" and c not in sparse_cols]
+        
+        # Fill missing values systematically for numeric continuous columns
+        for col in numeric_continuous_cols:
+            df[col] = df[col].interpolate().ffill().bfill()
         
         # For sparse event fields: just forward fill (no interpolation)
         for col in sparse_cols:
@@ -578,33 +581,69 @@ class FitDataProcessor:
         max_dist = np.ceil(df["distance"].max())
         target_distances = np.arange(min_dist, max_dist + self.distance_interval, self.distance_interval)
         
-        # Set distance as index for resampling
+        # === PROPER INTERPOLATION APPROACH ===
+        # 1. Create a DataFrame with target distances (all values NaN)
+        # 2. Combine with original data
+        # 3. Sort by distance and interpolate
+        # 4. Keep only the target distances
+        
+        # Set distance as index
         df_indexed = df.set_index("distance")
         
-        # Reindex and interpolate continuous columns
-        continuous_df = df_indexed[continuous_cols]
-        continuous_resampled = (
-            continuous_df
-            .reindex(target_distances)
-            .interpolate(method="linear")
-        )
+        # --- Handle numeric continuous columns (interpolate) ---
+        target_df = pd.DataFrame(index=target_distances)
+        for col in numeric_continuous_cols:
+            target_df[col] = np.nan
         
-        # Reindex and forward-fill sparse event columns (no interpolation)
+        # Combine original data with target grid (concat and sort)
+        combined = pd.concat([df_indexed[numeric_continuous_cols], target_df])
+        combined = combined[~combined.index.duplicated(keep='first')]  # Keep original values at exact matches
+        combined = combined.sort_index()
+        
+        # Interpolate to fill target values (method="index" uses the index values for linear interpolation)
+        continuous_resampled = combined.interpolate(method="index")
+        
+        # Keep only target distances
+        continuous_resampled = continuous_resampled.loc[target_distances]
+        
+        # Handle any remaining NaN at edges (extrapolation)
+        continuous_resampled = continuous_resampled.ffill().bfill()
+        
+        # --- Handle non-numeric columns (forward-fill, like timestamp) ---
+        if non_numeric_cols:
+            target_non_numeric_df = pd.DataFrame(index=target_distances)
+            for col in non_numeric_cols:
+                target_non_numeric_df[col] = np.nan
+            
+            combined_non_numeric = pd.concat([df_indexed[non_numeric_cols], target_non_numeric_df])
+            combined_non_numeric = combined_non_numeric[~combined_non_numeric.index.duplicated(keep='first')]
+            combined_non_numeric = combined_non_numeric.sort_index()
+            
+            # Forward-fill (no interpolation for non-numeric)
+            non_numeric_resampled = combined_non_numeric.ffill().bfill()
+            non_numeric_resampled = non_numeric_resampled.loc[target_distances]
+            
+            # Add to result
+            continuous_resampled = pd.concat([continuous_resampled, non_numeric_resampled], axis=1)
+        
+        # --- Handle sparse event columns (forward-fill, no interpolation) ---
         if sparse_cols:
-            sparse_df = df_indexed[sparse_cols]
-            sparse_resampled = (
-                sparse_df
-                .reindex(target_distances)
-                .ffill()
-                .bfill()
-                .astype(int)
-            )
-            # Combine
-            result_df = pd.concat([continuous_resampled, sparse_resampled], axis=1)
-        else:
-            result_df = continuous_resampled
+            target_sparse_df = pd.DataFrame(index=target_distances)
+            for col in sparse_cols:
+                target_sparse_df[col] = np.nan
+            
+            combined_sparse = pd.concat([df_indexed[sparse_cols], target_sparse_df])
+            combined_sparse = combined_sparse[~combined_sparse.index.duplicated(keep='first')]
+            combined_sparse = combined_sparse.sort_index()
+            
+            # Forward-fill (no interpolation for sparse events)
+            sparse_resampled = combined_sparse.ffill().bfill()
+            sparse_resampled = sparse_resampled.loc[target_distances].astype(int)
+            
+            # Combine with continuous
+            continuous_resampled = pd.concat([continuous_resampled, sparse_resampled], axis=1)
         
-        result_df = result_df.reset_index().rename(columns={"index": "distance"})
+        result_df = continuous_resampled.reset_index().rename(columns={"index": "distance"})
         
         return result_df
     
@@ -619,12 +658,16 @@ class FitDataProcessor:
         - duration_diff: Time between distance steps
         - avg_heart_rate_so_far: Running average of heart rate
         - elevation_gain/loss_of_last_100m: Rolling window terrain features
+        
+        Note: Duration should already exist from pre-resampling calculation.
+        We calculate duration_diff from the resampled duration values.
         """
         if df.empty:
             return df
         
-        # Calculate duration from timestamp if available
-        if "timestamp" in df.columns:
+        # Duration should already be calculated before resampling and interpolated
+        # If somehow missing, try to calculate from timestamp (fallback)
+        if "duration" not in df.columns and "timestamp" in df.columns:
             df["timestamp"] = pd.to_datetime(df["timestamp"])
             df["duration"] = (
                 df["timestamp"].diff().dt.total_seconds().cumsum().fillna(0)
