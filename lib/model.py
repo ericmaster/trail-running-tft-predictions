@@ -216,6 +216,7 @@ def evaluate_full_session_sequential(
     additional_time_varying_reals: list = None,
     additional_known_reals: list = None,
     time_varying_known_categoricals: list = None,
+    use_model_features: bool = True,
     verbose: bool = False
 ):
     """
@@ -242,6 +243,8 @@ def evaluate_full_session_sequential(
             (e.g., intake features: 'water_intake', 'electrolytes_intake', 'food_intake')
         time_varying_known_categoricals: Time-varying known categorical features
             (e.g., 'rpe' for Rate of Perceived Exertion with levels 0-4)
+        use_model_features: If True, extract feature lists from model's hparams
+            to ensure dataset matches model's expected input structure (default: True)
         verbose: If True, print progress for each chunk
         
     Returns:
@@ -296,36 +299,63 @@ def evaluate_full_session_sequential(
     chunk_errors = []
     chunk_boundaries = []
     
-    # Time-varying variable lists
-    time_varying_known_reals = ["altitude", "elevation_diff", "elevation_gain", "elevation_loss"]
-    time_varying_unknown_reals = target_names + ["speed", "avg_heart_rate_so_far", "duration"]
-    known_categoricals = time_varying_known_categoricals or []
-    
-    # Add additional known reals (e.g., intake features for V3)
-    if additional_known_reals:
-        valid_known = [col for col in additional_known_reals if col in session_data.columns]
-        time_varying_known_reals = time_varying_known_reals + valid_known
-        if verbose and valid_known:
-            print(f"Including additional known reals: {valid_known}")
-    
-    # Handle deprecated parameter for backward compatibility
-    if additional_time_varying_reals:
-        # Filter to only include columns that exist in the data
-        valid_additional = [col for col in additional_time_varying_reals if col in session_data.columns]
-        time_varying_unknown_reals = time_varying_unknown_reals + valid_additional
-        if verbose and valid_additional:
-            print(f"Including additional time-varying reals (deprecated): {valid_additional}")
-    
-    # Validate known categoricals
-    if known_categoricals:
-        valid_categoricals = [col for col in known_categoricals if col in session_data.columns]
-        known_categoricals = valid_categoricals
-        if verbose and valid_categoricals:
-            print(f"Including known categoricals: {valid_categoricals}")
+    # Extract feature lists from model's hyperparameters for consistency
+    if use_model_features and hasattr(model, 'hparams') and 'dataset_parameters' in model.hparams:
+        ds_params = model.hparams['dataset_parameters']
         
-        # Ensure categorical columns are string type
+        # Get known reals from model
+        model_known_reals = ds_params.get('time_varying_known_reals', None)
+        if model_known_reals:
+            time_varying_known_reals = [r for r in model_known_reals if r in session_data.columns]
+        else:
+            time_varying_known_reals = ["altitude", "elevation_diff", "elevation_gain", "elevation_loss"]
+        
+        # Get unknown reals from model
+        model_unknown_reals = ds_params.get('time_varying_unknown_reals', None)
+        if model_unknown_reals:
+            time_varying_unknown_reals = [r for r in model_unknown_reals if r in session_data.columns]
+        else:
+            time_varying_unknown_reals = target_names + ["speed", "avg_heart_rate_so_far", "duration"]
+        
+        # Get known categoricals from model
+        model_known_cats = ds_params.get('time_varying_known_categoricals', None)
+        if model_known_cats:
+            known_categoricals = [c for c in model_known_cats if c in session_data.columns]
+        else:
+            known_categoricals = []
+        
+        if verbose:
+            print(f"Using model's feature configuration:")
+            print(f"  Known reals: {time_varying_known_reals}")
+            print(f"  Unknown reals: {time_varying_unknown_reals}")
+            print(f"  Known categoricals: {known_categoricals}")
+    else:
+        # Fallback to manual feature specification
+        time_varying_known_reals = ["altitude", "elevation_diff", "elevation_gain", "elevation_loss"]
+        time_varying_unknown_reals = target_names + ["speed", "avg_heart_rate_so_far", "duration"]
+        known_categoricals = time_varying_known_categoricals or []
+        
+        # Add additional known reals (e.g., intake features for V3)
+        if additional_known_reals:
+            valid_known = [col for col in additional_known_reals if col in session_data.columns]
+            time_varying_known_reals = time_varying_known_reals + valid_known
+            if verbose and valid_known:
+                print(f"Including additional known reals: {valid_known}")
+        
+        # Handle deprecated parameter for backward compatibility
+        if additional_time_varying_reals:
+            valid_additional = [col for col in additional_time_varying_reals if col in session_data.columns]
+            time_varying_unknown_reals = time_varying_unknown_reals + valid_additional
+            if verbose and valid_additional:
+                print(f"Including additional time-varying reals (deprecated): {valid_additional}")
+    
+    # Ensure categorical columns are string type if any
+    if known_categoricals:
         for cat_col in known_categoricals:
-            session_data[cat_col] = session_data[cat_col].astype(str)
+            if cat_col in session_data.columns:
+                session_data[cat_col] = session_data[cat_col].astype(str)
+        if verbose:
+            print(f"Categorical columns: {known_categoricals}")
     
     chunk_idx = 0
     start_idx = 0

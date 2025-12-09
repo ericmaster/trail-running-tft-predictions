@@ -517,6 +517,9 @@ class TFTDataModuleGarminForV2(pl.LightningDataModule):
         self.validation = None
         self.test = None
     
+    # Default temperature when not available in Garmin data (°C)
+    DEFAULT_TEMPERATURE = 20.0
+    
     def prepare_data(self):
         """Load and prepare Garmin data for V2-compatible evaluation."""
         print(f"\n=== Loading Garmin Data for V2 Evaluation ===")
@@ -543,6 +546,11 @@ class TFTDataModuleGarminForV2(pl.LightningDataModule):
             missing = [col for col in required_cols if col not in df.columns]
             if missing:
                 raise ValueError(f"Missing required columns in {file}: {missing}")
+            
+            # Add temperature if missing (Garmin FIT files don't have it)
+            if 'temperature' not in df.columns:
+                df['temperature'] = self.DEFAULT_TEMPERATURE
+                print(f"    Added synthetic temperature: {self.DEFAULT_TEMPERATURE}°C")
             
             all_sessions.append(df)
             print(f"    Rows: {len(df)}, Distance: {df['distance'].max():.0f}m")
