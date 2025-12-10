@@ -217,6 +217,7 @@ def evaluate_full_session_sequential(
     additional_known_reals: list = None,
     time_varying_known_categoricals: list = None,
     use_model_features: bool = True,
+    normalizers_data: dict = None,
     verbose: bool = False
 ):
     """
@@ -245,6 +246,9 @@ def evaluate_full_session_sequential(
             (e.g., 'rpe' for Rate of Perceived Exertion with levels 0-4)
         use_model_features: If True, extract feature lists from model's hparams
             to ensure dataset matches model's expected input structure (default: True)
+        normalizers_data: Dict containing pre-fitted normalizers and dataset config
+            (from save_normalizers.py). If provided, uses these normalizers
+            instead of creating new ones (avoids single-session normalization issues).
         verbose: If True, print progress for each chunk
         
     Returns:
@@ -431,32 +435,61 @@ def evaluate_full_session_sequential(
                     chunk_data[cat_col] = chunk_data[cat_col].astype(str)
             
             # Build categorical encoders
-            cat_encoders = {"session_id_encoded": NaNLabelEncoder(add_nan=True)}
-            for cat_col in known_categoricals:
-                cat_encoders[cat_col] = NaNLabelEncoder(add_nan=True)
+            if normalizers_data is not None:
+                # Use pre-fitted encoders from normalizers_data
+                cat_encoders = normalizers_data['categorical_encoders']
+            else:
+                cat_encoders = {"session_id_encoded": NaNLabelEncoder(add_nan=True)}
+                for cat_col in known_categoricals:
+                    cat_encoders[cat_col] = NaNLabelEncoder(add_nan=True)
             
-            # Create TimeSeriesDataSet
-            chunk_dataset = TimeSeriesDataSet(
-                chunk_data,
-                time_idx="time_idx",
-                target=target_names,
-                group_ids=["session_id_encoded"],
-                min_encoder_length=1,
-                max_encoder_length=max(1, actual_encoder_len),
-                min_prediction_length=pred_length,
-                max_prediction_length=pred_length,
-                time_varying_known_reals=time_varying_known_reals,
-                time_varying_known_categoricals=known_categoricals if known_categoricals else [],
-                time_varying_unknown_reals=time_varying_unknown_reals,
-                target_normalizer=MultiNormalizer(
-                    [GroupNormalizer(groups=["session_id_encoded"], transformation=None) for _ in target_names]
-                ),
-                add_relative_time_idx=True,
-                add_target_scales=True,
-                categorical_encoders=cat_encoders,
-                add_encoder_length=True,
-                predict_mode=True
-            )
+            # Create TimeSeriesDataSet - use normalizers_data if provided
+            if normalizers_data is not None:
+                # Create dataset with pre-fitted normalizers from training data
+                chunk_dataset = TimeSeriesDataSet(
+                    chunk_data,
+                    time_idx="time_idx",
+                    target=normalizers_data['target_names'],
+                    group_ids=normalizers_data['group_ids'],
+                    min_encoder_length=1,
+                    max_encoder_length=max(1, actual_encoder_len),
+                    min_prediction_length=pred_length,
+                    max_prediction_length=pred_length,
+                    time_varying_known_reals=normalizers_data['time_varying_known_reals'],
+                    time_varying_known_categoricals=normalizers_data.get('time_varying_known_categoricals', []),
+                    time_varying_unknown_reals=normalizers_data['time_varying_unknown_reals'],
+                    static_categoricals=normalizers_data.get('static_categoricals', []),
+                    static_reals=normalizers_data.get('static_reals', []),
+                    target_normalizer=normalizers_data['target_normalizer'],
+                    add_relative_time_idx=normalizers_data.get('add_relative_time_idx', True),
+                    add_target_scales=normalizers_data.get('add_target_scales', True),
+                    add_encoder_length=normalizers_data.get('add_encoder_length', True),
+                    categorical_encoders=cat_encoders,
+                    predict_mode=True
+                )
+            else:
+                # Create new dataset (may have normalization issues for new sessions)
+                chunk_dataset = TimeSeriesDataSet(
+                    chunk_data,
+                    time_idx="time_idx",
+                    target=target_names,
+                    group_ids=["session_id_encoded"],
+                    min_encoder_length=1,
+                    max_encoder_length=max(1, actual_encoder_len),
+                    min_prediction_length=pred_length,
+                    max_prediction_length=pred_length,
+                    time_varying_known_reals=time_varying_known_reals,
+                    time_varying_known_categoricals=known_categoricals if known_categoricals else [],
+                    time_varying_unknown_reals=time_varying_unknown_reals,
+                    target_normalizer=MultiNormalizer(
+                        [GroupNormalizer(groups=["session_id_encoded"], transformation=None) for _ in target_names]
+                    ),
+                    add_relative_time_idx=True,
+                    add_target_scales=True,
+                    categorical_encoders=cat_encoders,
+                    add_encoder_length=True,
+                    predict_mode=True
+                )
             
             chunk_loader = chunk_dataset.to_dataloader(train=False, batch_size=1, num_workers=0)
             x, y = next(iter(chunk_loader))
