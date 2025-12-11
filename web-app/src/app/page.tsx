@@ -1,8 +1,9 @@
 'use client';
 
 import { useState } from 'react';
-import GpxUploader from '@/components/GpxUploader';
+import Sidebar from '@/components/Sidebar';
 import PredictionResults from '@/components/PredictionResults';
+import Navbar from '@/components/Navbar';
 
 export interface PredictionData {
   distance_km: number[];
@@ -31,49 +32,46 @@ export default function Home() {
   };
 
   return (
-    <main style={styles.main}>
-      <div style={styles.container}>
-        <header style={styles.header}>
-          <h1 style={styles.title}>🏃‍♂️ Trail Running Race Predictor</h1>
-          <p style={styles.subtitle}>
-            AI-powered race time predictions using Temporal Fusion Transformers
-          </p>
-        </header>
+    <div className="app-container">
+      <Navbar />
 
-        <GpxUploader 
-          onPrediction={handlePrediction} 
+      {/* Main Layout */}
+      <div className="main-layout">
+        <Sidebar 
+          onPrediction={handlePrediction}
           loading={loading}
           setLoading={setLoading}
         />
 
-        {prediction && <PredictionResults data={prediction} />}
+        <main className="main-content">
+          {prediction ? (
+            <PredictionResults data={prediction} />
+          ) : (
+            <div className="hero is-medium">
+              <div className="hero-body has-text-centered">
+                <div className="container">
+                  <span className="icon is-large has-text-info mb-4">
+                    <i className="fas fa-route fa-4x"></i>
+                  </span>
+                  <h2 className="title is-3">Welcome to Trail Running Predictor</h2>
+                  <p className="subtitle is-5">
+                    Upload a GPX file from the sidebar to get AI-powered predictions for your race
+                  </p>
+                  <div className="content has-text-left mt-6" style={{ maxWidth: '600px', margin: '0 auto' }}>
+                    <h3 className="title is-5">What you'll get:</h3>
+                    <ul>
+                      <li>📊 Predicted race duration and pace</li>
+                      <li>❤️ Heart rate predictions along the route</li>
+                      <li>🏃 Cadence estimates for different terrain</li>
+                      <li>⛰️ Detailed elevation profile analysis</li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+        </main>
       </div>
-    </main>
+    </div>
   );
 }
-
-const styles: { [key: string]: React.CSSProperties } = {
-  main: {
-    minHeight: '100vh',
-    padding: '2rem',
-  },
-  container: {
-    maxWidth: '1400px',
-    margin: '0 auto',
-  },
-  header: {
-    textAlign: 'center' as const,
-    marginBottom: '3rem',
-    color: 'white',
-  },
-  title: {
-    fontSize: '3rem',
-    fontWeight: 'bold',
-    marginBottom: '1rem',
-    textShadow: '2px 2px 4px rgba(0,0,0,0.3)',
-  },
-  subtitle: {
-    fontSize: '1.2rem',
-    opacity: 0.9,
-  },
-};

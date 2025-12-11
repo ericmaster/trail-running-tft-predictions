@@ -39,82 +39,106 @@ export default function PredictionResults({ data }: PredictionResultsProps) {
   };
 
   return (
-    <div style={styles.container}>
+    <div className="prediction-results">
+      <h2 className="title is-3 has-text-centered mb-5">
+        <span className="icon-text">
+          <span className="icon has-text-info">
+            <i className="fas fa-chart-line"></i>
+          </span>
+          <span>Race Predictions</span>
+        </span>
+      </h2>
+
       {/* Summary Stats */}
-      <div style={styles.statsGrid}>
-        <div style={styles.statCard}>
-          <div style={styles.statLabel}>Total Distance</div>
-          <div style={styles.statValue}>
-            {data.total_distance_km.toFixed(2)} km
+      <div className="columns is-multiline mb-5">
+        <div className="column is-3">
+          <div className="box has-background-info-light stat-card">
+            <p className="heading">Total Distance</p>
+            <p className="title is-4 has-text-info">
+              {data.total_distance_km.toFixed(2)} km
+            </p>
           </div>
         </div>
         
-        <div style={styles.statCard}>
-          <div style={styles.statLabel}>Predicted Time</div>
-          <div style={styles.statValue}>
-            {formatTime(data.total_predicted_time_min)}
+        <div className="column is-3">
+          <div className="box has-background-primary-light stat-card">
+            <p className="heading">Predicted Time</p>
+            <p className="title is-4 has-text-primary">
+              {formatTime(data.total_predicted_time_min)}
+            </p>
           </div>
         </div>
         
-        <div style={styles.statCard}>
-          <div style={styles.statLabel}>Elevation Gain</div>
-          <div style={styles.statValue}>
-            {Math.round(data.elevation_stats.total_gain)} m
+        <div className="column is-3">
+          <div className="box has-background-success-light stat-card">
+            <p className="heading">Elevation Gain</p>
+            <p className="title is-4 has-text-success">
+              {Math.round(data.elevation_stats.total_gain)} m
+            </p>
           </div>
         </div>
         
-        <div style={styles.statCard}>
-          <div style={styles.statLabel}>Avg Pace</div>
-          <div style={styles.statValue}>
-            {(data.total_predicted_time_min / data.total_distance_km).toFixed(1)} min/km
+        <div className="column is-3">
+          <div className="box has-background-link-light stat-card">
+            <p className="heading">Avg Pace</p>
+            <p className="title is-4 has-text-link">
+              {(data.total_predicted_time_min / data.total_distance_km).toFixed(1)} min/km
+            </p>
           </div>
         </div>
       </div>
 
       {/* Elevation Profile with Duration Overlay */}
-      <div style={styles.chartContainer}>
-        <h3 style={styles.chartTitle}>📈 Elevation Profile & Predicted Duration</h3>
+      <div className="box chart-container mb-5">
+        <h3 className="title is-5 mb-4">
+          <span className="icon-text">
+            <span className="icon has-text-success">
+              <i className="fas fa-mountain"></i>
+            </span>
+            <span>Elevation Profile & Predicted Duration</span>
+          </span>
+        </h3>
         <ResponsiveContainer width="100%" height={300}>
           <ComposedChart data={sampledData}>
-            <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
+            <CartesianGrid strokeDasharray="3 3" className="chart-grid" />
             <XAxis 
               dataKey="distance" 
-              label={{ value: 'Distance (km)', position: 'insideBottom', offset: -5, fill: 'white' }}
-              stroke="white"
+              label={{ value: 'Distance (km)', position: 'insideBottom', offset: -5 }}
+              className="chart-axis"
             />
             <YAxis 
               yAxisId="left"
-              label={{ value: 'Altitude (m)', angle: -90, position: 'insideLeft', fill: 'white' }}
-              stroke="white"
+              label={{ value: 'Altitude (m)', angle: -90, position: 'insideLeft' }}
+              className="chart-axis"
             />
             <YAxis 
               yAxisId="right"
               orientation="right"
-              label={{ value: 'Duration (min)', angle: 90, position: 'insideRight', fill: 'white' }}
-              stroke="white"
+              label={{ value: 'Duration (min)', angle: 90, position: 'insideRight' }}
+              className="chart-axis"
             />
             <Tooltip 
               contentStyle={{ 
-                backgroundColor: 'rgba(0, 0, 0, 0.8)', 
-                border: '1px solid rgba(255, 255, 255, 0.3)',
-                borderRadius: '8px',
-                color: 'white'
+                backgroundColor: 'var(--tooltip-bg)', 
+                border: '1px solid var(--tooltip-border)',
+                borderRadius: '6px',
+                color: 'var(--text-color)'
               }}
             />
-            <Legend wrapperStyle={{ color: 'white' }} />
+            <Legend />
             <Area
               yAxisId="left"
               type="monotone"
               dataKey="altitude"
-              fill="rgba(34, 197, 94, 0.3)"
-              stroke="rgb(34, 197, 94)"
+              fill="rgba(72, 199, 142, 0.3)"
+              stroke="#48c78e"
               name="Altitude"
             />
             <Line
               yAxisId="right"
               type="monotone"
               dataKey="duration"
-              stroke="rgb(239, 68, 68)"
+              stroke="#3e8ed0"
               strokeWidth={2}
               dot={false}
               name="Accumulated Duration"
@@ -124,32 +148,39 @@ export default function PredictionResults({ data }: PredictionResultsProps) {
       </div>
 
       {/* Heart Rate Prediction */}
-      <div style={styles.chartContainer}>
-        <h3 style={styles.chartTitle}>❤️ Predicted Heart Rate</h3>
+      <div className="box chart-container mb-5">
+        <h3 className="title is-5 mb-4">
+          <span className="icon-text">
+            <span className="icon has-text-danger">
+              <i className="fas fa-heartbeat"></i>
+            </span>
+            <span>Predicted Heart Rate</span>
+          </span>
+        </h3>
         <ResponsiveContainer width="100%" height={250}>
           <LineChart data={sampledData}>
-            <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
+            <CartesianGrid strokeDasharray="3 3" className="chart-grid" />
             <XAxis 
               dataKey="distance" 
-              label={{ value: 'Distance (km)', position: 'insideBottom', offset: -5, fill: 'white' }}
-              stroke="white"
+              label={{ value: 'Distance (km)', position: 'insideBottom', offset: -5 }}
+              className="chart-axis"
             />
             <YAxis 
-              label={{ value: 'Heart Rate (bpm)', angle: -90, position: 'insideLeft', fill: 'white' }}
-              stroke="white"
+              label={{ value: 'Heart Rate (bpm)', angle: -90, position: 'insideLeft' }}
+              className="chart-axis"
             />
             <Tooltip 
               contentStyle={{ 
-                backgroundColor: 'rgba(0, 0, 0, 0.8)', 
-                border: '1px solid rgba(255, 255, 255, 0.3)',
-                borderRadius: '8px',
-                color: 'white'
+                backgroundColor: 'var(--tooltip-bg)', 
+                border: '1px solid var(--tooltip-border)',
+                borderRadius: '6px',
+                color: 'var(--text-color)'
               }}
             />
             <Line
               type="monotone"
               dataKey="heartRate"
-              stroke="rgb(239, 68, 68)"
+              stroke="#f14668"
               strokeWidth={2}
               dot={false}
               name="Heart Rate"
@@ -159,32 +190,39 @@ export default function PredictionResults({ data }: PredictionResultsProps) {
       </div>
 
       {/* Cadence Prediction */}
-      <div style={styles.chartContainer}>
-        <h3 style={styles.chartTitle}>🏃 Predicted Cadence</h3>
+      <div className="box chart-container mb-5">
+        <h3 className="title is-5 mb-4">
+          <span className="icon-text">
+            <span className="icon has-text-link">
+              <i className="fas fa-running"></i>
+            </span>
+            <span>Predicted Cadence</span>
+          </span>
+        </h3>
         <ResponsiveContainer width="100%" height={250}>
           <LineChart data={sampledData}>
-            <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
+            <CartesianGrid strokeDasharray="3 3" className="chart-grid" />
             <XAxis 
               dataKey="distance" 
-              label={{ value: 'Distance (km)', position: 'insideBottom', offset: -5, fill: 'white' }}
-              stroke="white"
+              label={{ value: 'Distance (km)', position: 'insideBottom', offset: -5 }}
+              className="chart-axis"
             />
             <YAxis 
-              label={{ value: 'Cadence (spm)', angle: -90, position: 'insideLeft', fill: 'white' }}
-              stroke="white"
+              label={{ value: 'Cadence (spm)', angle: -90, position: 'insideLeft' }}
+              className="chart-axis"
             />
             <Tooltip 
               contentStyle={{ 
-                backgroundColor: 'rgba(0, 0, 0, 0.8)', 
-                border: '1px solid rgba(255, 255, 255, 0.3)',
-                borderRadius: '8px',
-                color: 'white'
+                backgroundColor: 'var(--tooltip-bg)', 
+                border: '1px solid var(--tooltip-border)',
+                borderRadius: '6px',
+                color: 'var(--text-color)'
               }}
             />
             <Line
               type="monotone"
               dataKey="cadence"
-              stroke="rgb(59, 130, 246)"
+              stroke="#3e8ed0"
               strokeWidth={2}
               dot={false}
               name="Cadence"
@@ -194,80 +232,38 @@ export default function PredictionResults({ data }: PredictionResultsProps) {
       </div>
 
       {/* Elevation Stats */}
-      <div style={styles.elevationStats}>
-        <h3 style={styles.chartTitle}>⛰️ Elevation Statistics</h3>
-        <div style={styles.elevStatsGrid}>
-          <div>
-            <strong>Min Altitude:</strong> {Math.round(data.elevation_stats.min_altitude)}m
+      <div className="box">
+        <h3 className="title is-5 mb-4">
+          <span className="icon-text">
+            <span className="icon has-text-warning">
+              <i className="fas fa-chart-area"></i>
+            </span>
+            <span>Elevation Statistics</span>
+          </span>
+        </h3>
+        <div className="columns is-multiline">
+          <div className="column is-6">
+            <div className="content">
+              <p><strong>Min Altitude:</strong> <span className="tag is-info is-medium">{Math.round(data.elevation_stats.min_altitude)}m</span></p>
+            </div>
           </div>
-          <div>
-            <strong>Max Altitude:</strong> {Math.round(data.elevation_stats.max_altitude)}m
+          <div className="column is-6">
+            <div className="content">
+              <p><strong>Max Altitude:</strong> <span className="tag is-info is-medium">{Math.round(data.elevation_stats.max_altitude)}m</span></p>
+            </div>
           </div>
-          <div>
-            <strong>Total Gain:</strong> {Math.round(data.elevation_stats.total_gain)}m
+          <div className="column is-6">
+            <div className="content">
+              <p><strong>Total Gain:</strong> <span className="tag is-success is-medium">{Math.round(data.elevation_stats.total_gain)}m</span></p>
+            </div>
           </div>
-          <div>
-            <strong>Total Loss:</strong> {Math.round(data.elevation_stats.total_loss)}m
+          <div className="column is-6">
+            <div className="content">
+              <p><strong>Total Loss:</strong> <span className="tag is-danger is-medium">{Math.round(data.elevation_stats.total_loss)}m</span></p>
+            </div>
           </div>
         </div>
       </div>
     </div>
   );
 }
-
-const styles: { [key: string]: React.CSSProperties } = {
-  container: {
-    marginTop: '2rem',
-  },
-  statsGrid: {
-    display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-    gap: '1rem',
-    marginBottom: '2rem',
-  },
-  statCard: {
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
-    backdropFilter: 'blur(10px)',
-    borderRadius: '12px',
-    padding: '1.5rem',
-    textAlign: 'center' as const,
-    border: '1px solid rgba(255, 255, 255, 0.2)',
-  },
-  statLabel: {
-    fontSize: '0.9rem',
-    color: 'rgba(255, 255, 255, 0.7)',
-    marginBottom: '0.5rem',
-  },
-  statValue: {
-    fontSize: '1.8rem',
-    fontWeight: 'bold' as const,
-    color: 'white',
-  },
-  chartContainer: {
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
-    backdropFilter: 'blur(10px)',
-    borderRadius: '12px',
-    padding: '1.5rem',
-    marginBottom: '1.5rem',
-    border: '1px solid rgba(255, 255, 255, 0.2)',
-  },
-  chartTitle: {
-    color: 'white',
-    marginBottom: '1rem',
-    fontSize: '1.2rem',
-  },
-  elevationStats: {
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
-    backdropFilter: 'blur(10px)',
-    borderRadius: '12px',
-    padding: '1.5rem',
-    border: '1px solid rgba(255, 255, 255, 0.2)',
-    color: 'white',
-  },
-  elevStatsGrid: {
-    display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-    gap: '1rem',
-    marginTop: '1rem',
-  },
-};
