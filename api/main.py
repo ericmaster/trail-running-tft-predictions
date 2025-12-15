@@ -44,6 +44,7 @@ app.add_middleware(
 # Model configuration
 MODEL_PATH = Path(__file__).parent.parent / "checkpoints_v2" / "best-checkpoint_v2-epoch=27-val_loss=0.12-v1.ckpt"
 NORMALIZERS_PATH = Path(__file__).parent.parent / "checkpoints_v2" / "normalizers.pkl"
+GPX_PRESETS_PATH = Path(__file__).parent.parent / "data" / "gpx"
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
 # Load model and normalizers at startup
@@ -203,6 +204,183 @@ async def root():
     }
 
 
+class PresetInfo(BaseModel):
+    """Info about a preset GPX file."""
+    filename: str
+    name: str
+
+
+def prepare_session_data(session_data: pd.DataFrame, session_id: str) -> pd.DataFrame:
+    """
+    Prepare session data for inference by adding required columns.
+    
+    Args:
+        session_data: DataFrame with distance, altitude, elevation_diff, elevation_gain, elevation_loss
+        session_id: Identifier for the session
+        
+    Returns:
+        DataFrame ready for model inference
+    """
+    session_data = session_data.copy()
+    
+    # Add required columns
+    session_data['time_idx'] = np.arange(len(session_data))
+    session_data['session_id'] = session_id
+    session_data['session_id_encoded'] = 0
+    
+    # Add synthetic physiological values (cold-start)
+    session_data['duration_diff'] = 4.0
+    session_data['heartRate'] = 140.0
+    session_data['temperature'] = 20.0
+    session_data['cadence'] = 80.0
+    session_data['speed'] = 3.0
+    session_data['avg_heart_rate_so_far'] = 140.0
+    session_data['duration'] = session_data.index * 4.0
+    
+    # Calculate fatigue proxy features
+    window_size = 20  # 100m / 5m = 20 steps
+    session_data['elevation_gain_of_last_100m'] = session_data['elevation_gain'].rolling(
+        window=window_size, min_periods=1
+    ).sum()
+    session_data['elevation_loss_of_last_100m'] = session_data['elevation_loss'].rolling(
+        window=window_size, min_periods=1
+    ).sum()
+    
+    return session_data
+
+
+def calculate_weighted_first_sample(train_data: pd.DataFrame) -> Dict[str, float]:
+    """Synthetic encoder function for cold-start inference."""
+    return {
+        'duration_diff': 4.0,
+        'heartRate': 140.0,
+        'temperature': 20.0,
+        'cadence': 80.0,
+        'speed': 3.0,
+        'avg_heart_rate_so_far': 140.0,
+        'duration': 0.0
+    }
+
+
+def run_inference(session_data: pd.DataFrame, session_id: str) -> PredictionResponse:
+    """
+    Run model inference on prepared session data.
+    
+    Args:
+        session_data: Prepared DataFrame with all required columns
+        session_id: Identifier for the session
+        
+    Returns:
+        PredictionResponse with all predictions
+    """
+    from lib.model import evaluate_full_session_sequential
+    
+    print(f"Running cold-start inference...")
+    
+    result = evaluate_full_session_sequential(
+        model=model,
+        test_data=session_data.copy(),
+        train_data=pd.DataFrame(),
+        session_id=session_id,
+        calculate_weighted_first_sample_fn=calculate_weighted_first_sample,
+        max_pred_length=200,
+        encoder_length=400,
+        normalizers_data=normalizers_data,
+        use_model_features=True,
+        verbose=True
+    )
+    
+    if result is None:
+        raise ValueError("Model inference failed - session may be too short")
+    
+    # Extract predictions
+    predictions = result['all_predictions']['duration_diff']
+    heart_rates = result['all_predictions']['heartRate']
+    cadences = result['all_predictions']['cadence']
+    
+    print(f"Predictions generated: {len(predictions)} steps")
+    print(f"Duration range: {min(predictions):.2f} - {max(predictions):.2f}s")
+    print(f"HR range: {min(heart_rates):.1f} - {max(heart_rates):.1f} bpm")
+    print(f"Chunks processed: {result['chunks_processed']}")
+    
+    # Calculate accumulated duration
+    accumulated_duration = np.cumsum(predictions) / 60  # Convert to minutes
+    
+    # Get the corresponding session data for predicted steps
+    num_predicted = len(predictions)
+    predicted_session_data = session_data.iloc[:num_predicted].copy()
+    
+    return PredictionResponse(
+        distance_km=(predicted_session_data['distance'] / 1000).tolist(),
+        altitude=predicted_session_data['altitude'].tolist(),
+        elevation_gain=predicted_session_data['elevation_gain'].cumsum().tolist(),
+        predicted_duration=predictions,
+        accumulated_duration=accumulated_duration.tolist(),
+        predicted_heart_rate=heart_rates,
+        predicted_cadence=cadences,
+        total_distance_km=float(predicted_session_data['distance'].max() / 1000),
+        total_predicted_time_min=float(accumulated_duration[-1]),
+        elevation_stats={
+            'min_altitude': float(predicted_session_data['altitude'].min()),
+            'max_altitude': float(predicted_session_data['altitude'].max()),
+            'total_gain': float(predicted_session_data['elevation_gain'].sum()),
+            'total_loss': float(predicted_session_data['elevation_loss'].sum())
+        }
+    )
+
+
+@app.get("/presets", response_model=List[PresetInfo])
+async def list_presets():
+    """List available preset GPX files for demo."""
+    presets = []
+    
+    if GPX_PRESETS_PATH.exists():
+        for gpx_file in sorted(GPX_PRESETS_PATH.glob("*.gpx")):
+            # Create display name from filename
+            name = gpx_file.stem.replace("-", " ").replace("_", " ").title()
+            presets.append(PresetInfo(filename=gpx_file.name, name=name))
+    
+    return presets
+
+
+@app.get("/presets/{filename}", response_model=PredictionResponse)
+async def predict_from_preset(filename: str):
+    """
+    Run prediction on a preset GPX file.
+    
+    Args:
+        filename: Name of the preset GPX file
+        
+    Returns:
+        Prediction results
+    """
+    if model is None:
+        raise HTTPException(status_code=503, detail="Model not loaded")
+    
+    gpx_path = GPX_PRESETS_PATH / filename
+    
+    if not gpx_path.exists():
+        raise HTTPException(status_code=404, detail=f"Preset not found: {filename}")
+    
+    if not filename.endswith('.gpx'):
+        raise HTTPException(status_code=400, detail="File must be a GPX file")
+    
+    try:
+        with open(gpx_path, 'r', encoding='utf-8') as f:
+            gpx_content = f.read()
+        
+        session_data = parse_gpx_file(gpx_content)
+        print(f"Parsed preset GPX '{filename}': {len(session_data)} points, {session_data['distance'].max()/1000:.2f} km")
+        
+        session_data = prepare_session_data(session_data, 'gpx_preset')
+        return run_inference(session_data, 'gpx_preset')
+    
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Prediction failed: {str(e)}")
+
+
 @app.post("/predict", response_model=PredictionResponse)
 async def predict_race_time(file: UploadFile = File(...)):
     """
@@ -217,125 +395,22 @@ async def predict_race_time(file: UploadFile = File(...)):
     if model is None:
         raise HTTPException(status_code=503, detail="Model not loaded")
     
-    # Validate file type
     if not file.filename.endswith('.gpx'):
         raise HTTPException(status_code=400, detail="File must be a GPX file")
     
     try:
-        # Read GPX content
         content = await file.read()
         gpx_content = content.decode('utf-8')
         
-        # Parse GPX and extract elevation profile
         session_data = parse_gpx_file(gpx_content)
-        
         print(f"Parsed GPX: {len(session_data)} points, {session_data['distance'].max()/1000:.2f} km")
         
-        # Prepare data for inference
-        # Add required columns
-        session_data['time_idx'] = np.arange(len(session_data))
-        session_data['session_id'] = 'gpx_upload'
-        session_data['session_id_encoded'] = 0
-        
-        # Add synthetic physiological values (cold-start)
-        session_data['duration_diff'] = 4.0
-        session_data['heartRate'] = 140.0
-        session_data['temperature'] = 20.0
-        session_data['cadence'] = 80.0
-        session_data['speed'] = 3.0
-        session_data['avg_heart_rate_so_far'] = 140.0
-        session_data['duration'] = session_data.index * 4.0
-        
-        # Calculate fatigue proxy features
-        window_size = 20  # 100m / 5m = 20 steps
-        session_data['elevation_gain_of_last_100m'] = session_data['elevation_gain'].rolling(
-            window=window_size, min_periods=1
-        ).sum()
-        session_data['elevation_loss_of_last_100m'] = session_data['elevation_loss'].rolling(
-            window=window_size, min_periods=1
-        ).sum()
-        
-        # Use evaluate_full_session_sequential with pre-loaded training dataset
-        from lib.model import evaluate_full_session_sequential
-        
-        print(f"Running cold-start inference with V2 model...")
-        
-        # Prepare data
-        test_data = session_data.copy()
-        train_data = pd.DataFrame()  # Empty, only used by synthetic encoder
-        
-        # Synthetic encoder function
-        def calculate_weighted_first_sample(train_data):
-            return {
-                'duration_diff': 4.0,
-                'heartRate': 140.0,
-                'temperature': 20.0,
-                'cadence': 80.0,
-                'speed': 3.0,
-                'avg_heart_rate_so_far': 140.0,
-                'duration': 0.0
-            }
-        
-        # Run inference with pre-loaded normalizers
-        result = evaluate_full_session_sequential(
-            model=model,
-            test_data=test_data,
-            train_data=train_data,
-            session_id='gpx_upload',
-            calculate_weighted_first_sample_fn=calculate_weighted_first_sample,
-            max_pred_length=200,
-            encoder_length=400,
-            normalizers_data=normalizers_data,
-            use_model_features=True,
-            verbose=True
-        )
-        
-        if result is None:
-            raise ValueError("Model inference failed - session may be too short")
-        
-        # Extract predictions
-        predictions = result['all_predictions']['duration_diff']
-        heart_rates = result['all_predictions']['heartRate']
-        cadences = result['all_predictions']['cadence']
-        
-        print(f"Predictions generated: {len(predictions)} steps")
-        print(f"Duration range: {min(predictions):.2f} - {max(predictions):.2f}s")
-        print(f"Duration std: {np.std(predictions):.2f}s")
-        print(f"HR range: {min(heart_rates):.1f} - {max(heart_rates):.1f} bpm")
-        print(f"HR std: {np.std(heart_rates):.2f} bpm")
-        print(f"Cadence range: {min(cadences):.1f} - {max(cadences):.1f}")
-        print(f"Chunks processed: {result['chunks_processed']}")
-        print(f"Total steps predicted: {result['steps_predicted']}")
-        
-        # Calculate accumulated duration
-        accumulated_duration = np.cumsum(predictions) / 60  # Convert to minutes
-        
-        # Get the corresponding session data for predicted steps
-        num_predicted = len(predictions)
-        predicted_session_data = session_data.iloc[:num_predicted].copy()
-        
-        # Prepare response using predicted values
-        response = PredictionResponse(
-            distance_km=(predicted_session_data['distance'] / 1000).tolist(),
-            altitude=predicted_session_data['altitude'].tolist(),
-            elevation_gain=predicted_session_data['elevation_gain'].cumsum().tolist(),
-            predicted_duration=predictions,
-            accumulated_duration=accumulated_duration.tolist(),
-            predicted_heart_rate=heart_rates,
-            predicted_cadence=cadences,
-            total_distance_km=float(predicted_session_data['distance'].max() / 1000),
-            total_predicted_time_min=float(accumulated_duration[-1]),
-            elevation_stats={
-                'min_altitude': float(predicted_session_data['altitude'].min()),
-                'max_altitude': float(predicted_session_data['altitude'].max()),
-                'total_gain': float(predicted_session_data['elevation_gain'].sum()),
-                'total_loss': float(predicted_session_data['elevation_loss'].sum())
-            }
-        )
-        
-        return response
+        session_data = prepare_session_data(session_data, 'gpx_upload')
+        return run_inference(session_data, 'gpx_upload')
     
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Prediction failed: {str(e)}")
 
 
