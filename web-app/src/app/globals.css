@@ -1,8 +1,7 @@
 /* Import Bulma CSS */
 @import 'bulma/css/bulma.min.css';
 
-/* Import Font Awesome for icons */
-@import url('https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css');
+/* Font Awesome is loaded via <link> in layout.tsx for proper Next.js compatibility */
 
 /* CSS Variables for Themes */
 :root[data-theme="light"] {
@@ -226,6 +225,10 @@ body {
 }
 
 /* GPX Uploader */
+.gpx-uploader {
+  position: relative;
+}
+
 .gpx-uploader .dropzone {
   border: 2px dashed #20b2aa;
   border-radius: 8px;
@@ -254,6 +257,84 @@ body {
 
 .gpx-uploader .file-cta:hover {
   background: #17a2b8;
+}
+
+/* Loading Overlay */
+.loading-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+
+.loading-content {
+  background: var(--bg-secondary);
+  padding: 3rem 4rem;
+  border-radius: 16px;
+  text-align: center;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+  max-width: 400px;
+  width: 90%;
+}
+
+.loading-spinner {
+  color: #20b2aa;
+}
+
+.loading-text {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: var(--text-color);
+}
+
+.loading-subtext {
+  font-size: 0.875rem;
+  color: var(--text-muted);
+  margin-top: 0.5rem;
+}
+
+.loading-content .progress {
+  height: 6px;
+  border-radius: 3px;
+}
+
+/* Divider with text */
+.divider-text {
+  display: flex;
+  align-items: center;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.divider-text::before,
+.divider-text::after {
+  content: '';
+  flex: 1;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.divider-text span {
+  padding: 0 0.75rem;
+}
+
+/* Dimmed dropzone when preset is selected */
+.gpx-uploader .dropzone.is-dimmed {
+  opacity: 0.5;
+  border-color: var(--border-color);
+}
+
+.gpx-uploader .dropzone.is-dimmed:hover {
+  opacity: 1;
 }
 
 /* Buttons */
@@ -344,7 +425,12 @@ body {
 @media screen and (max-width: 768px) {
   .sidebar {
     width: 100%;
+    max-width: 320px;
     transform: translateX(-100%);
+  }
+  
+  .sidebar:not(.collapsed) {
+    transform: translateX(0);
   }
   
   .sidebar.collapsed {
@@ -352,6 +438,18 @@ body {
   }
   
   .sidebar-toggle {
+    left: 0;
+    top: 60px;
+    border-radius: 0 8px 8px 0;
+    width: 44px;
+    height: 44px;
+  }
+  
+  .sidebar-toggle:not(.collapsed) {
+    left: 320px;
+  }
+  
+  .sidebar-toggle.collapsed {
     left: 0;
   }
   
@@ -362,6 +460,26 @@ body {
   
   .navbar-menu {
     background: var(--navbar-bg);
+  }
+
+  /* Sidebar overlay for mobile */
+  .sidebar-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 15;
+  }
+
+  /* Ensure sidebar is above overlay */
+  .sidebar.mobile {
+    z-index: 25;
+  }
+  
+  .sidebar-toggle {
+    z-index: 30;
   }
 }
 

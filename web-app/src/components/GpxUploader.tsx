@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { useRef, useState, useEffect } from 'react';
 import axios from 'axios';
 import { PredictionData } from '@/app/page';
 
@@ -10,10 +10,33 @@ interface GpxUploaderProps {
   setLoading: (loading: boolean) => void;
 }
 
+interface Preset {
+  filename: string;
+  name: string;
+}
+
 export default function GpxUploader({ onPrediction, loading, setLoading }: GpxUploaderProps) {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [presets, setPresets] = useState<Preset[]>([]);
+  const [selectedPreset, setSelectedPreset] = useState<string>('');
+  const [loadingPresets, setLoadingPresets] = useState(true);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Load presets on mount
+  useEffect(() => {
+    const fetchPresets = async () => {
+      try {
+        const response = await axios.get<Preset[]>('/api/presets');
+        setPresets(response.data);
+      } catch (err) {
+        console.error('Failed to load presets:', err);
+      } finally {
+        setLoadingPresets(false);
+      }
+    };
+    fetchPresets();
+  }, []);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -23,34 +46,50 @@ export default function GpxUploader({ onPrediction, loading, setLoading }: GpxUp
         return;
       }
       setSelectedFile(file);
+      setSelectedPreset(''); // Clear preset selection
       setError(null);
     }
   };
 
+  const handlePresetChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    setSelectedPreset(e.target.value);
+    setSelectedFile(null); // Clear file selection
+    setError(null);
+  };
+
   const handleUpload = async () => {
-    if (!selectedFile) {
-      setError('Please select a file first');
+    if (!selectedFile && !selectedPreset) {
+      setError('Please select a file or a preset route');
       return;
     }
 
     setLoading(true);
     setError(null);
 
-    const formData = new FormData();
-    formData.append('file', selectedFile);
-
     try {
-      const response = await axios.post<PredictionData>(
-        '/api/predict',
-        formData,
-        {
-          headers: {
-            'Content-Type': 'multipart/form-data',
-          },
-        }
-      );
+      let response;
+      
+      if (selectedPreset) {
+        // Load from preset
+        response = await axios.get<PredictionData>(`/api/presets/${selectedPreset}`);
+      } else if (selectedFile) {
+        // Upload file
+        const formData = new FormData();
+        formData.append('file', selectedFile);
+        response = await axios.post<PredictionData>(
+          '/api/predict',
+          formData,
+          {
+            headers: {
+              'Content-Type': 'multipart/form-data',
+            },
+          }
+        );
+      }
 
-      onPrediction(response.data);
+      if (response) {
+        onPrediction(response.data);
+      }
     } catch (err: any) {
       console.error('Upload error:', err);
       setError(
@@ -82,8 +121,57 @@ export default function GpxUploader({ onPrediction, loading, setLoading }: GpxUp
 
   return (
     <div className="gpx-uploader">
+      {/* Loading Overlay */}
+      {loading && (
+        <div className="loading-overlay">
+          <div className="loading-content">
+            <div className="loading-spinner">
+              <i className="fas fa-spinner fa-spin fa-3x"></i>
+            </div>
+            <p className="loading-text mt-4">Analyzing your route...</p>
+            <p className="loading-subtext">This may take a moment for longer routes</p>
+            <progress className="progress is-info mt-4" max="100">Processing</progress>
+          </div>
+        </div>
+      )}
+
+      {/* Preset Selector */}
+      <div className="field mb-4">
+        <label className="label has-text-grey-light is-size-7">
+          <span className="icon-text">
+            <span className="icon">
+              <i className="fas fa-route"></i>
+            </span>
+            <span>Demo Routes</span>
+          </span>
+        </label>
+        <div className="control has-icons-left">
+          <div className={`select is-fullwidth ${loadingPresets ? 'is-loading' : ''}`}>
+            <select 
+              value={selectedPreset} 
+              onChange={handlePresetChange}
+              disabled={loading || loadingPresets}
+            >
+              <option value="">Select a preset route...</option>
+              {presets.map((preset) => (
+                <option key={preset.filename} value={preset.filename}>
+                  {preset.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <span className="icon is-left">
+            <i className="fas fa-map-marked-alt"></i>
+          </span>
+        </div>
+      </div>
+
+      <div className="divider-text mb-4">
+        <span>or upload your own</span>
+      </div>
+
       <div
-        className="file has-name is-fullwidth is-boxed is-info dropzone"
+        className={`file has-name is-fullwidth is-boxed is-info dropzone ${selectedPreset ? 'is-dimmed' : ''}`}
         onDragOver={handleDragOver}
         onDrop={handleDrop}
       >
@@ -94,6 +182,7 @@ export default function GpxUploader({ onPrediction, loading, setLoading }: GpxUp
             type="file"
             accept=".gpx"
             onChange={handleFileChange}
+            disabled={loading}
           />
           <span className="file-cta">
             <span className="file-icon">
@@ -131,7 +220,7 @@ export default function GpxUploader({ onPrediction, loading, setLoading }: GpxUp
       <button
         className={`button is-info is-fullwidth ${loading ? 'is-loading' : ''}`}
         onClick={handleUpload}
-        disabled={!selectedFile || loading}
+        disabled={(!selectedFile && !selectedPreset) || loading}
       >
         <span className="icon">
           <i className="fas fa-chart-line"></i>

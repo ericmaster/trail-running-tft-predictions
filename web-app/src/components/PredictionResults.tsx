@@ -32,6 +32,15 @@ export default function PredictionResults({ data }: PredictionResultsProps) {
   // Sample data for visualization (every 10th point to reduce rendering load)
   const sampledData = chartData.filter((_, idx) => idx % 10 === 0);
 
+  // Calculate altitude domain with padding
+  const minAltitude = Math.min(...data.altitude);
+  const maxAltitude = Math.max(...data.altitude);
+  const altitudePadding = (maxAltitude - minAltitude) * 0.1; // 10% padding
+  const altitudeDomain: [number, number] = [
+    Math.floor(minAltitude - altitudePadding),
+    Math.ceil(maxAltitude + altitudePadding)
+  ];
+
   const formatTime = (minutes: number) => {
     const hours = Math.floor(minutes / 60);
     const mins = Math.floor(minutes % 60);
@@ -108,6 +117,7 @@ export default function PredictionResults({ data }: PredictionResultsProps) {
             />
             <YAxis 
               yAxisId="left"
+              domain={altitudeDomain}
               label={{ value: 'Altitude (m)', angle: -90, position: 'insideLeft' }}
               className="chart-axis"
             />

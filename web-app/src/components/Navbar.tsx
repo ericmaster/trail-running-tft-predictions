@@ -27,10 +27,15 @@ export default function Navbar() {
             <button 
               className="button is-rounded theme-toggle"
               onClick={toggleTheme}
-              aria-label="Toggle theme"
+              aria-label={`Switch to ${theme === 'light' ? 'dark' : 'light'} mode`}
+              title={`Switch to ${theme === 'light' ? 'dark' : 'light'} mode`}
             >
               <span className="icon">
-                <i className={`fas fa-${theme === 'light' ? 'moon' : 'sun'}`}></i>
+                {theme === 'light' ? (
+                  <i className="fas fa-moon"></i>
+                ) : (
+                  <i className="fas fa-sun"></i>
+                )}
               </span>
             </button>
           </div>
