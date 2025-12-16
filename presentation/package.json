@@ -1,0 +1,26 @@
+{
+  "name": "tft-trail-running-presentation",
+  "version": "1.0.0",
+  "description": "Thesis defense presentation: Application of Temporal Fusion Transformer to Trail Running Predictions",
+  "main": "slides.md",
+  "scripts": {
+    "dev": "reveal-md slides.md --watch",
+    "start": "reveal-md slides.md",
+    "build": "reveal-md slides.md --static dist",
+    "build:pdf": "reveal-md slides.md --print slides.pdf",
+    "export": "reveal-md slides.md --static dist && reveal-md slides.md --print dist/slides.pdf"
+  },
+  "keywords": [
+    "thesis",
+    "presentation",
+    "temporal-fusion-transformer",
+    "trail-running",
+    "deep-learning",
+    "reveal.js"
+  ],
+  "author": "Eric Aguayo",
+  "license": "MIT",
+  "devDependencies": {
+    "reveal-md": "^6.1.4"
+  }
+}
