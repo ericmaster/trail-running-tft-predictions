@@ -7,8 +7,10 @@
     "dev": "reveal-md slides.md --watch",
     "start": "reveal-md slides.md",
     "build": "reveal-md slides.md --static dist",
-    "build:pdf": "reveal-md slides.md --print slides.pdf",
-    "export": "reveal-md slides.md --static dist && reveal-md slides.md --print dist/slides.pdf"
+    "build:pdf": "reveal-md slides.md --static dist && npx decktape reveal dist/slides.html slides.pdf --size 1400x1200 --chrome-arg=--no-sandbox",
+    "build:pdf:live": "npx decktape reveal http://localhost:1948/slides.md slides.pdf --size 1400x1200 --chrome-arg=--no-sandbox",
+    "build:pdf:wide": "reveal-md slides.md --static dist && npx decktape reveal dist/slides.html slides.pdf --size 1920x1080 --chrome-arg=--no-sandbox",
+    "export": "reveal-md slides.md --static dist && npx decktape reveal dist/slides.html dist/slides.pdf --size 1400x1200 --chrome-arg=--no-sandbox"
   },
   "keywords": [
     "thesis",
@@ -21,6 +23,7 @@
   "author": "Eric Aguayo",
   "license": "MIT",
   "devDependencies": {
+    "decktape": "^3.15.0",
     "reveal-md": "^6.1.4"
   }
 }

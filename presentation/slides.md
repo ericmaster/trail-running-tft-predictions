@@ -11,6 +11,9 @@ revealOptions:
   slideNumber: true
   hash: true
   center: true
+  math:
+    mathjax: 'https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js'
+    config: 'TeX-AMS_HTML-full'
 ---
 
 <!-- .slide: data-background-gradient="linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)" -->
@@ -77,7 +80,7 @@ December 2025
 
 <!-- .slide: data-background-gradient="linear-gradient(135deg, #1a1a2e 0%, #0f3460 100%)" -->
 
-## 💡 Our Solution
+## 💡 The Solution
 
 ### Temporal Fusion Transformer (TFT)
 
@@ -87,16 +90,16 @@ December 2025
 **Architecture Components:**
 <div style="text-align: start; justify-content: flex-start;">
 <div class="fragment">
+- 🚪 Gated Residual Networks (GRN)
+</div>
+<div class="fragment">
+- 📊 Variable Selection Networks
+</div>
+<div class="fragment">
 - 🔄 LSTM Encoder-Decoder
 </div>
 <div class="fragment">
 - 🎯 Multi-head Self-Attention
-</div>
-<div class="fragment">
-- 🚪 Gated Residual Networks
-</div>
-<div class="fragment">
-- 📊 Variable Selection Networks
 </div>
 </div>
 
@@ -104,7 +107,8 @@ December 2025
 
 <!-- .slide: data-background-gradient="linear-gradient(135deg, #1a1a2e 0%, #0f3460 100%)" -->
 
-**Key Advantages:**
+### Key Advantages
+
 - Handles **known** vs **unknown** futures
 - Learns **long-range** dependencies
 - Provides **interpretable** attention weights
@@ -117,18 +121,16 @@ December 2025
 
 <!-- .slide: data-background-gradient="linear-gradient(135deg, #16213e 0%, #1a1a2e 100%)" -->
 
-## 🔬 Key Contributions
+## 🔬 Contributions
 
 <div style="font-size: 0.9em;">
 
-| # | Contribution | Impact |
-|---|--------------|--------|
-| 1 | **Novel Application** | First TFT for trail running |
-| 2 | **Cold-Start Methodology** | Synthetic encoder approach |
-| 3 | **Asymmetric Loss Function** | Corrects under-prediction bias |
-| 4 | **Distance-Domain Resampling** | Pace-independent predictions |
-| 5 | **Multi-Target Forecasting** | Duration, HR, temp, cadence |
-| 6 | **Error Cancellation Analysis** | Robust evaluation guidance |
+1. **Novel Application**: First documented TFT for trail running
+2. **Cold-Start Methodology**: Synthetic encoder approach
+3. **Asymmetric Loss Function**: Corrects under-prediction bias
+4. **Distance-Domain Resampling**: Pace-independent predictions
+5. **Multi-Target Forecasting**: Duration, HR, temp, cadence
+6. **Error Cancellation Analysis**: Robust evaluation guidance
 
 </div>
 
@@ -141,11 +143,13 @@ December 2025
 ### Distance-Domain Resampling
 
 ```
+106 Polar sessions (79 train / 16 val / 11 test)
 Time Domain (1 sec) → Distance Domain (5 meters)
+7 Garmin sessions (5 train / 1 val / 1 test)
 ```
 
 <div style="display: flex; justify-content: space-around;">
-<div style="flex: 1;">
+<div class="fragment" style="flex: 1;">
 
 **Input Features:**
 - Heart Rate
@@ -155,7 +159,7 @@ Time Domain (1 sec) → Distance Domain (5 meters)
 - Temperature
 
 </div>
-<div style="flex: 1;">
+<div class="fragment" style="flex: 1;">
 
 **Derived Features:**
 - Elevation diff/gain/loss
@@ -166,12 +170,6 @@ Time Domain (1 sec) → Distance Domain (5 meters)
 </div>
 </div>
 
-<div class="fragment">
-
-**Dataset:** 106 Polar sessions (79 train / 16 val / 11 test)
-
-</div>
-
 ---
 
 <!-- .slide: data-background-gradient="linear-gradient(135deg, #1a1a2e 0%, #16213e 100%)" -->
@@ -180,66 +178,56 @@ Time Domain (1 sec) → Distance Domain (5 meters)
 
 ### Synthetic Encoder Approach
 
-$$\mathbf{x}_{synthetic} = \frac{\sum_{s=1}^{S} w_s \cdot \mathbf{x}_{s,0}}{\sum_{s=1}^{S} w_s}$$
+$$x\_{synthetic} = \\frac{\\sum\_{s=1}^{S} w\_s \\cdot x\_{s,0}}{\\sum\_{s=1}^{S} w\_s}$$
 
 <div style="display: flex; justify-content: space-around; align-items: center;">
-<div style="flex: 1;">
 
-**How it works:**
-1. Weight historical first samples
-2. Recent sessions weighted higher
-3. Use actual **terrain data** (known)
-4. Estimate physiological baseline
+- Weight historical first samples
+- Recent sessions weighted higher
+- Use actual **terrain data** (known)
+- Estimate physiological baseline
 
 </div>
+
+----
+
+<!-- .slide: data-background-gradient="linear-gradient(135deg, #1a1a2e 0%, #16213e 100%)" -->
+
+### Synthetic Encoder Purpose
+
 <div style="flex: 1;">
 
-**Why it works:**
-- Captures current **fitness level**
-- Leverages **population patterns**
+- Capture current **fitness level**
+- Leverage **population patterns**
 - GPS route **preview** available
-- No race data needed! 🎯
-
-</div>
-</div>
-
----
-
-<!-- .slide: data-background-gradient="linear-gradient(135deg, #16213e 0%, #0f3460 100%)" -->
-
-## ⚖️ Asymmetric Loss Function
-
-### Correcting Under-Prediction Bias
-
-$$\mathcal{L}_{asym} = w \cdot \frac{|y - \hat{y}|}{|y| + |\hat{y}| + \epsilon} \cdot 2$$
-
-<div class="fragment">
-
-$$w = \begin{cases} \alpha & \text{if } y > \hat{y} \text{ (under-prediction)} \\ 1 - \alpha & \text{if } y \leq \hat{y} \text{ (over-prediction)} \end{cases}$$
-
-</div>
-
-<div class="fragment">
-
-**With α = 0.51:** Slight penalty for under-prediction
-
-> ⚠️ *Highly sensitive parameter:* α=0.55 or α=0.60 caused pronounced over-prediction
+- Add an initial input without any previous race data! 🎯
 
 </div>
 
 ---
+
+<!-- .slide: data-background-gradient="linear-gradient(135deg, #1a1a2e 0%, #16213e 100%)" -->
+
+### 📊 Results
+
+#### Accumulated Duration Prediction
+
+![V1 vs V2 Comparison](assets/v1_v2_comparison.png)
+
+<small>V2 (asymmetric SMAPE) shows substantially reduced under-prediction bias throughout the entire session</small>
+
+----
 
 <!-- .slide: data-background-gradient="linear-gradient(135deg, #0f3460 0%, #1a1a2e 100%)" -->
 
-## 📈 Results: V1 vs V2
+### 📈 Results: V1 vs V2
 
-### Cold-Start Inference (24.5 km Session)
+#### Cold-Start on 24.5 km Session / 324.9 min
 
-| Metric | V1 (SMAPE) | V2 (Asymmetric) | Change |
+| Metric | V1 (sMAPE) | V2 (Asym) | Change |
 |--------|------------|-----------------|--------|
 | MAE (s/5m) | 1.347 | 1.066 | **-20.9%** |
 | Bias (s/5m) | -1.162 | +0.157 | **+113.5%** |
-| Actual Duration | 324.9 min | 324.9 min | -- |
 | Predicted | 229.9 min | 337.7 min | +46.9% |
 | **Accumulated Error** | **-29.2%** | **+3.9%** | ✅ |
 
@@ -249,25 +237,42 @@ $$w = \begin{cases} \alpha & \text{if } y > \hat{y} \text{ (under-prediction)} \
 
 </div>
 
----
+----
 
-<!-- .slide: data-background-gradient="linear-gradient(135deg, #1a1a2e 0%, #16213e 100%)" -->
+<!-- .slide: data-background-gradient="linear-gradient(135deg, #16213e 0%, #0f3460 100%)" -->
 
-## 📊 Visual Results
+### ⚖️ Asymmetric Loss Function
 
-### Accumulated Duration Prediction
+#### Correcting Under-Prediction Bias
 
-![V1 vs V2 Comparison](assets/v1_v2_comparison.png)
+$$\mathcal{L}_{asym} = w \cdot \frac{|y - \hat{y}|}{|y| + |\hat{y}| + \epsilon} \cdot 2$$
 
-<small>V2 (asymmetric SMAPE) shows substantially reduced under-prediction bias throughout the entire session</small>
+<div class="fragment">
+$$
+w =
+\begin{cases}
+\alpha & \text{if } y > \hat{y} \quad \text{(under-prediction)} \\\\
+1 - \alpha & \text{if } y \leq \hat{y} \quad \text{(over-prediction)}
+\end{cases}
+$$
+
+</div>
+
+<div class="fragment">
+
+**With α = 0.51:** Slight penalty for under-prediction
+
+> ⚠️ *Highly sensitive parameter:* α>=0.55 caused high over-prediction
+
+</div>
 
 ---
 
 <!-- .slide: data-background-gradient="linear-gradient(135deg, #16213e 0%, #0f3460 100%)" -->
 
-## 🔄 V3: Transfer Learning
+### 🔄 V3: Transfer Learning
 
-### Fine-tuning with Garmin + Nutrition Data
+#### Fine-tuning with Garmin + Nutrition Data
 
 <div style="display: flex; justify-content: space-around;">
 <div style="flex: 1;">
@@ -303,23 +308,23 @@ $$w = \begin{cases} \alpha & \text{if } y > \hat{y} \text{ (under-prediction)} \
 
 <!-- .slide: data-background-gradient="linear-gradient(135deg, #0f3460 0%, #16213e 100%)" -->
 
-## ⚠️ Limitations & Honest Assessment
+### ⚠️ Limitations
 
 <div style="font-size: 0.85em;">
 
-| Limitation | Impact | Mitigation |
+| Limitation | Impact | Mitigation and Needs |
 |------------|--------|------------|
-| **Single-Athlete Dataset** | Unknown generalization | Multi-athlete validation needed |
-| **106 Sessions** | Overfitting risk | Regularization (dropout=0.25) |
-| **Geographic Specificity** | Andes-trained only | Test on varied terrain |
+| **Single-Athlete Dataset** | Multi-athlete generalization | Multi-athlete data needed |
+| **106 Sessions** | Overfitting risk | Dropout=0.25 / More data needed |
+| **Geographic Specificity** | Andes-trained mostly | More data needed |
 | **Missing Features** | Weather, sleep, HRV absent | Future sensor integration |
-| **Computational Cost** | GPU required | Model compression needed |
+| **Fine Tuning Limitation** | Restricted to base model size | Increase model complexity |
 
 </div>
 
 <div class="fragment">
 
-**V3 Lesson:** 5 sessions insufficient for sparse feature learning → **20+ sessions** recommended
+**V3 Lesson:** 5 sessions insufficient for sparse feature learning → **20+ sessions** at least
 
 </div>
 
@@ -327,35 +332,43 @@ $$w = \begin{cases} \alpha & \text{if } y > \hat{y} \text{ (under-prediction)} \
 
 <!-- .slide: data-background-gradient="linear-gradient(135deg, #1a1a2e 0%, #0f3460 100%)" -->
 
-## 🚀 Practical Applications
+### Practical Applications
 
 <div style="display: flex; justify-content: space-around; flex-wrap: wrap;">
 
-<div style="width: 45%; margin: 10px; padding: 20px; background: rgba(255,255,255,0.1); border-radius: 10px;">
+<div class="fragment" style="width: 75%; margin: 10px; padding: 20px; background: rgba(255,255,255,0.1); border-radius: 10px;">
 
-### 🏃 Race Planning
+#### 🏃 Race Planning
 Estimate finish time **before race start** based on route profile
 
 </div>
 
-<div style="width: 45%; margin: 10px; padding: 20px; background: rgba(255,255,255,0.1); border-radius: 10px;">
+<div class="fragment" style="width: 75%; margin: 10px; padding: 20px; background: rgba(255,255,255,0.1); border-radius: 10px;">
 
-### ⏱️ Pacing Strategy
-Real-time predictions for **pacing adjustments**
-
-</div>
-
-<div style="width: 45%; margin: 10px; padding: 20px; background: rgba(255,255,255,0.1); border-radius: 10px;">
-
-### 🍎 Nutrition Planning
+#### 🍎 Nutrition Planning
 Predicted duration informs **caloric & fluid** needs
 
 </div>
+</div>
 
-<div style="width: 45%; margin: 10px; padding: 20px; background: rgba(255,255,255,0.1); border-radius: 10px;">
+----
 
-### 📈 Training Optimization
+<!-- .slide: data-background-gradient="linear-gradient(135deg, #1a1a2e 0%, #0f3460 100%)" -->
+
+### Practical Applications
+
+<div style="display: flex; justify-content: space-around; flex-wrap: wrap;">
+<div class="fragment" style="width: 75%; margin: 10px; padding: 20px; background: rgba(255,255,255,0.1); border-radius: 10px;">
+
+#### 📈 Training Optimization
 Analyze **predicted vs actual** performance
+
+</div>
+
+<div class="fragment" style="width: 75%; margin: 10px; padding: 20px; background: rgba(255,255,255,0.1); border-radius: 10px;">
+
+#### ⏱️ Pacing Strategy
+Real-time predictions for **pacing adjustments**
 
 </div>
 
@@ -369,17 +382,21 @@ Analyze **predicted vs actual** performance
 
 <div style="font-size: 0.9em;">
 
-1. **Multi-Athlete Datasets** - Platforms like Strava/Garmin Connect
+1. **Multi-Athlete Data** – Incorporate data from Strava and Garmin Connect to improve generalization.
+2. **Few-Shot Analysis** – Evaluate predictions when a small amount of prior session data is available.
+3. **Weather Integration** – Include external factors such as temperature, humidity, and wind.
+4. **Uncertainty Quantification** – Provide confidence intervals for model predictions.
+5. **Interpretability** – Analyze attention weights to better understand feature importance.
 
-2. **Weather Integration** - Temperature, humidity, wind conditions
+----
 
-3. **Uncertainty Quantification** - Confidence intervals for predictions
+<!-- .slide: data-background-gradient="linear-gradient(135deg, #16213e 0%, #1a1a2e 100%)" -->
 
-4. **Model Compression** - On-device inference for sports watches
-
-5. **Multi-Metric Evaluation** - Both per-step AND cumulative metrics
-
-6. **Session Type Classification** - Training vs. race differentiation
+6. **Model Compression** – Enable on-device inference, e.g., from phone to watch.
+7. **Multi-Metric Evaluation** – Assess both per-step and cumulative prediction accuracy.
+8. **Session Type Classification** – Distinguish between training and race sessions.
+9. **Race Planning Optimization** – Develop strategies to minimize race completion time.
+10. **IMU Sensor Integration** – Incorporate preprocessed accelerometer/gyroscope data for terrain technicality analysis.
 
 </div>
 
@@ -387,25 +404,20 @@ Analyze **predicted vs actual** performance
 
 <!-- .slide: data-background-gradient="linear-gradient(135deg, #0f3460 0%, #16213e 100%)" -->
 
-## ✅ Conclusions
+## 🎓 Conclusions
 
-<div style="font-size: 0.9em;">
+<div style="font-size: 0.8em;">
 
-1. **TFT Successfully Applied** to trail running prediction - *first documented implementation*
-
+1. **TFT Successfully Applied** to trail running prediction
 2. **Cold-Start Prediction Achieved** via synthetic encoder approach
-
-3. **Asymmetric Loss (α=0.51)** reduced error from **-30.4% to +3.7%**
-
+3. **Asymmetric Loss** reduced error from **-30.4% to +3.7%**
 4. **Distance-Domain Processing** enables pace-independent predictions
-
-5. **Transfer Learning Works** - V2 model transferred to Garmin with +4.1% error
-
+5. **Transfer Learning Works** - V2 model transferred to Garmin but more data is needed for true validation
 6. **Critical Insight:** Evaluate both **per-step** and **cumulative** metrics
 
 </div>
 
-<div class="fragment" style="margin-top: 30px; font-size: 1.2em;">
+<div class="fragment" style="margin-top: 20px; font-size: 1.2em;">
 
 > 🎯 *"Conservative over-prediction is preferable for race planning"*
 
@@ -421,11 +433,10 @@ Analyze **predicted vs actual** performance
 
 <div style="margin-top: 50px;">
 
-**Eric Aguayo**
+<div style="margin: 0 auto; width: 50%">
 
-📧 ericmaster@nimblersoft.com
-
-🔗 github.com/ericmaster/tft-predictor
+![Demo](assets/qrcode.png)
+</div>
 
 </div>
 
